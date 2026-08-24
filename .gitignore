@@ -1,0 +1,53 @@
+# ==== Secrets / credenciales (NUNCA subir) ====
+.env
+.env.*
+!.env.example
+*.env
+credentials.json
+service_account.json
+*.key
+*.pem
+
+# ==== Bases de datos / exports locales ====
+*.db
+*.sqlite
+*.sqlite3
+health_connect_export/
+*.csv
+
+# ==== Byte-compiled / cache Python ====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ==== Entornos virtuales ====
+.venv/
+venv/
+env/
+ENV/
+
+# ==== Distribución / empaquetado ====
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ==== Logs ====
+*.log
+
+# ==== Testing / coverage ====
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==== Jupyter ====
+.ipynb_checkpoints/
+
+# ==== Editor / IDE ====
+.vscode/
+.idea/
+
+# ==== Sistema operativo ====
+.DS_Store
+Thumbs.db
