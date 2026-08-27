@@ -88,6 +88,32 @@ def get_last_day_data_json():
     return json.dumps(data, ensure_ascii=False, indent=2, default=str)
 
 
+def get_recent_analyses(limit=7):
+    """Devuelve los últimos `limit` análisis guardados, más reciente primero."""
+    ensure_django_setup()
+    from supabase_data.models import AiAnalysisLog
+
+    return list(
+        AiAnalysisLog.objects.order_by("-analysis_date")[:limit].values(
+            "analysis_date", "user_instruction", "analysis_text"
+        )
+    )
+
+
+def save_analysis(analysis_date, user_instruction, analysis_text):
+    """Guarda (o sobrescribe si ya existe ese día) el análisis de Gemini."""
+    ensure_django_setup()
+    from supabase_data.models import AiAnalysisLog
+
+    AiAnalysisLog.objects.update_or_create(
+        analysis_date=analysis_date,
+        defaults={
+            "user_instruction": user_instruction,
+            "analysis_text": analysis_text,
+        },
+    )
+
+
 def main():
     print(get_last_day_data_json())
 

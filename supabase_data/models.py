@@ -56,3 +56,15 @@ class SleepStages(models.Model):
         managed = False
         db_table = 'sleep_stages'
         unique_together = (('parent_key', 'stage_start'),)
+
+
+class AiAnalysisLog(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    analysis_date = models.DateField(unique=True)
+    user_instruction = models.TextField(null=True, blank=True)
+    analysis_text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = False
+        db_table = 'ai_analysis_log'

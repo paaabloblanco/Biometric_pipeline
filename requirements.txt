@@ -6,6 +6,9 @@ cffi==2.1.1
 cryptography==50.0.0
 deprecation==2.1.0
 Django==6.1
+distro==1.9.0
+google-auth==2.57.0
+google-genai==2.20.0
 h11==0.16.0
 h2==4.4.1
 hpack==4.2.0
@@ -18,6 +21,8 @@ packaging==26.3
 postgrest==2.31.0
 propcache==0.5.2
 psycopg2-binary==2.9.12
+pyasn1==0.6.4
+pyasn1_modules==0.4.2
 pycparser==3.0
 pydantic==2.13.4
 pydantic_core==2.46.4

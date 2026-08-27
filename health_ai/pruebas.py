@@ -1,15 +1,19 @@
 import os
 import json
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
-import httpx
+from google import genai
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
+
+# La consola de Windows por defecto usa cp1252, que no soporta emojis del prompt.
+sys.stdout.reconfigure(encoding="utf-8")
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 # Asegurar que Django se inicialice antes de importar modelos
@@ -20,8 +24,9 @@ except Exception:
     # Si ya está inicializado o falla por estar en un contexto distinto, continuar
     pass
 
-# Importamos la función que devuelve el JSON del último día guardado
-from supabase_data.services import get_last_day_data_json
+from supabase_data.services import get_last_day_data, get_recent_analyses, save_analysis
+
+HISTORY_DAYS = 7
 
 PROMPT_TEMPLATE = (
     "Actúa como un científico deportivo y analista de rendimiento de élite. El usuario te ha solicitado: \"{instruccion_usuario}\"\n"
@@ -42,17 +47,34 @@ PROMPT_TEMPLATE = (
     "📥 DATOS CRUDOS ACTUALES (Para analizar):\n"
     "{json_data}\n"
     "\n"
+    "🕓 ANÁLISIS DE DÍAS ANTERIORES (para ver tendencia, no los reanalices):\n"
+    "{historial}\n"
+    "\n"
     "🎯 DIRECTRICES DEL ANÁLISIS:\n"
     "1. Evalúa la desviación de la RHR y SpO2 respecto a la línea base. Una RHR elevada sostenida debe interpretarse como fatiga central o estrés del SNA.\n"
     "2. Analiza la arquitectura del sueño. ¿Se ha respetado el 30% de sueño profundo (esencial para recuperación física) y el 15% REM (recuperación cognitiva)?\n"
-    "3. Entrega un análisis técnico, conciso y profesional, evitando tono excesivamente conversacional o entusiasta.\n"
-    "4. Formatea la salida para ser leída en una interfaz móvil (Telegram). Usa formato Markdown (negritas) para métricas clave, listas precisas y párrafos de máximo 2 líneas.\n"
+    "3. Compara con los análisis anteriores: ¿mejora, empeora o se mantiene la tendencia?\n"
+    "4. Entrega un análisis técnico, conciso y profesional, evitando tono excesivamente conversacional o entusiasta.\n"
+    "5. Formatea la salida para ser leída en una interfaz móvil (Telegram). Usa formato Markdown (negritas) para métricas clave, listas precisas y párrafos de máximo 2 líneas.\n"
 )
 
 
-def build_prompt(instruccion_usuario: str, json_data: str) -> str:
+def format_historial(analyses: list) -> str:
+    """Convierte los análisis previos (más reciente primero) en texto legible para el prompt."""
+    if not analyses:
+        return "(No hay análisis anteriores todavía.)"
+
+    bloques = []
+    for a in reversed(analyses):  # orden cronológico: el más antiguo primero
+        bloques.append(f"### {a['analysis_date']}\n{a['analysis_text']}")
+    return "\n\n".join(bloques)
+
+
+def build_prompt(instruccion_usuario: str, json_data: str, historial: str) -> str:
     """Construye el prompt final sustituyendo los placeholders."""
-    return PROMPT_TEMPLATE.format(instruccion_usuario=instruccion_usuario, json_data=json_data)
+    return PROMPT_TEMPLATE.format(
+        instruccion_usuario=instruccion_usuario, json_data=json_data, historial=historial
+    )
 
 
 def _load_env_candidates() -> Optional[Path]:
@@ -68,18 +90,12 @@ def _load_env_candidates() -> Optional[Path]:
     return None
 
 
-def send_prompt_to_gemini(prompt: str, timeout: float = 60.0) -> str:
-    """Envía el prompt a la API configurada en variables de entorno.
+def send_prompt_to_gemini(prompt: str) -> str:
+    """Envía el prompt a Gemini usando el SDK oficial (google-genai).
 
-    Variables usadas (leer desde .env):
+    Variables usadas (leídas desde .env):
     - GEMINI_API_KEY (obligatorio)
-    - GEMINI_API_URL (opcional). Si se proporciona, se hace POST con JSON {"model": model, "prompt": prompt}
-    - GEMINI_MODEL (opcional) - nombre del modelo, por defecto 'models/text-bison-001'
-
-    Si no se proporciona GEMINI_API_URL, se intenta la URL de la API Generativa de Google
-    como fallback: https://generativelanguage.googleapis.com/v1beta2/{model}:generate?key={API_KEY}
-
-    La función intenta extraer texto de la respuesta usando varias heurísticas.
+    - GEMINI_MODEL (opcional) - por defecto 'gemini-2.5-flash'
     """
     _load_env_candidates()
 
@@ -89,84 +105,37 @@ def send_prompt_to_gemini(prompt: str, timeout: float = 60.0) -> str:
             "No se encontró GEMINI_API_KEY en el entorno. Añádela en health_ai/.env con la clave GEMINI_API_KEY."
         )
 
-    model = os.getenv("GEMINI_MODEL", "models/text-bison-001")
-    url = os.getenv("GEMINI_API_URL")
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-    headers = {"Content-Type": "application/json"}
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(model=model, contents=prompt)
 
-    # Preferir Authorization Bearer si el usuario configuró URL personalizada
-    if url:
-        headers["Authorization"] = f"Bearer {api_key}"
-        payload = {"model": model, "prompt": prompt}
-        resp = httpx.post(url, json=payload, headers=headers, timeout=timeout)
-    else:
-        # Intentar llamada a la API generativa de Google con api key en querystring
-        gen_url = f"https://generativelanguage.googleapis.com/v1beta2/{model}:generate?key={api_key}"
-        payload = {"prompt": {"text": prompt}}
-        resp = httpx.post(gen_url, json=payload, headers=headers, timeout=timeout)
+    if not response.text:
+        raise RuntimeError(f"Gemini no devolvió texto. Respuesta cruda: {response}")
 
-    if resp.status_code >= 400:
-        raise RuntimeError(f"Error en llamada a la API ({resp.status_code}): {resp.text}")
-
-    j = resp.json()
-
-    # Heurísticas para extraer texto de la respuesta
-    # 1) Google generative returns 'candidates' or 'output'
-    if isinstance(j, dict):
-        if "candidates" in j and isinstance(j["candidates"], list) and j["candidates"]:
-            c = j["candidates"][0]
-            return c.get("output", c.get("content", json.dumps(c, ensure_ascii=False)))
-
-        if "output" in j:
-            # output may be a list of blocks with content containing text
-            out = j["output"]
-            if isinstance(out, list):
-                # search for content->text
-                for block in out:
-                    if isinstance(block, dict) and "content" in block:
-                        for item in block.get("content", []):
-                            if isinstance(item, dict) and "text" in item:
-                                return item["text"]
-            # fallback to stringifying
-            return json.dumps(out, ensure_ascii=False)
-
-        # 2) OpenAI-like responses
-        if "choices" in j and isinstance(j["choices"], list) and j["choices"]:
-            ch = j["choices"][0]
-            # chat-completions style
-            if "message" in ch and "content" in ch["message"]:
-                return ch["message"]["content"]
-            if "text" in ch:
-                return ch["text"]
-
-    # Fallback: devolver JSON completo como string
-    return json.dumps(j, ensure_ascii=False, indent=2)
+    return response.text
 
 
 def run_analysis(instruccion_usuario: str, send_to_api: bool = True) -> Dict[str, Any]:
-    """Construye el prompt y opcionalmente lo envía a la API.
+    """Construye el prompt (con historial de análisis previos) y opcionalmente lo envía a la API.
 
     Devuelve un dict con keys: 'prompt' y, si send_to_api es True, 'response'.
     """
-    # Obtener JSON del servicio (string)
-    datos_json_str = get_last_day_data_json()
+    day_data = get_last_day_data()
+    target_date = date.fromisoformat(day_data["date"])
+    datos_pretty = json.dumps(day_data, ensure_ascii=False, indent=2, default=str)
 
-    # Intentar parsear para obtener un JSON pretty (asegurar indent y caracteres unicode)
-    try:
-        datos = json.loads(datos_json_str)
-        datos_pretty = json.dumps(datos, ensure_ascii=False, indent=2)
-    except Exception:
-        # Si no se puede parsear, usar la cadena tal cual
-        datos_pretty = datos_json_str
+    analyses = get_recent_analyses(limit=HISTORY_DAYS)
+    historial = format_historial(analyses)
 
-    prompt = build_prompt(instruccion_usuario, datos_pretty)
+    prompt = build_prompt(instruccion_usuario, datos_pretty, historial)
 
     result: Dict[str, Any] = {"prompt": prompt}
 
     if send_to_api:
-        # Enviar el prompt a la API y guardar la respuesta
         response_text = send_prompt_to_gemini(prompt)
         print(response_text)
+        save_analysis(target_date, instruccion_usuario, response_text)
         result["response"] = response_text
     else:
         # Solo imprimir el prompt para uso desde CLI
