@@ -1,21 +1,30 @@
 import json
+import os
 from datetime import date, datetime, timedelta
 
 from django.apps import apps
 
-from supabase_data.models import (
-    HeartRateSamples,
-    OxygenSaturationSamples,
-    RestingHeartRateSamples,
-    SleepStages,
-)
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 
 
-def ensure_django_setup():
+def get_models():
     if not apps.ready:
         import django
 
         django.setup()
+
+    from supabase_data.models import (
+        HeartRateSamples,
+        OxygenSaturationSamples,
+        RestingHeartRateSamples,
+        SleepStages,
+    )
+
+    return HeartRateSamples, OxygenSaturationSamples, RestingHeartRateSamples, SleepStages
+
+
+def ensure_django_setup():
+    get_models()
 
 
 def serialize_queryset(queryset):
@@ -26,6 +35,7 @@ def serialize_queryset(queryset):
 def get_latest_written_day():
     """Devuelve el último día que tiene registros en cualquiera de las tablas relevantes."""
     ensure_django_setup()
+    HeartRateSamples, OxygenSaturationSamples, RestingHeartRateSamples, SleepStages = get_models()
 
     dates = []
     for model, field_name in [
@@ -52,8 +62,8 @@ def get_latest_written_day():
 def get_last_day_data():
     """Devuelve todos los registros del último día escrito, sin hacer ningún promedio ni resumen."""
     ensure_django_setup()
+    HeartRateSamples, OxygenSaturationSamples, RestingHeartRateSamples, SleepStages = get_models()
     target_day = get_latest_written_day()
-    next_day = target_day + timedelta(days=1)
 
     return {
         "date": target_day.isoformat(),
