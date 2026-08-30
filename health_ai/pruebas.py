@@ -1,9 +1,9 @@
-import os
 import json
+import os
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 from google import genai
@@ -18,11 +18,8 @@ sys.stdout.reconfigure(encoding="utf-8")
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 # Asegurar que Django se inicialice antes de importar modelos
 import django
-try:
-    django.setup()
-except Exception:
-    # Si ya está inicializado o falla por estar en un contexto distinto, continuar
-    pass
+
+django.setup()  # idempotente: no-op si ya está inicializado
 
 from supabase_data.services import get_last_day_data, get_recent_analyses, save_analysis
 
@@ -37,6 +34,7 @@ PROMPT_TEMPLATE = (
     "- El atleta NO utiliza el monitor durante las sesiones de entrenamiento.\n"
     "- Por lo tanto, no busques carga de entrenamiento (Training Load) en estos datos.\n"
     "- Tu análisis debe centrarse EXCLUSIVAMENTE en la recuperación, la homeostasis, las tendencias del sueño y el estrés del sistema nervioso autónomo (SNA) basado en los datos de reposo.\n"
+    "- Las caídas puntuales de SpO2 pueden deberse a una mala colocación del reloj (correa floja o sensor mal apoyado), no necesariamente a un evento fisiológico. Si ves una bajada aislada de SpO2 sin otros signos de estrés (RHR normal, sueño normal), considera y menciona esta causa como la más probable antes de asumir hipoxia o apnea.\n"
     "\n"
     "📊 LÍNEA BASE (Valores medios históricos de referencia):\n"
     "- Frecuencia Cardíaca en Reposo (RHR): 47 bpm\n"
@@ -51,7 +49,7 @@ PROMPT_TEMPLATE = (
     "{historial}\n"
     "\n"
     "🎯 DIRECTRICES DEL ANÁLISIS:\n"
-    "1. Evalúa la desviación de la RHR y SpO2 respecto a la línea base. Una RHR elevada sostenida debe interpretarse como fatiga central o estrés del SNA.\n"
+    "1. Evalúa la desviación de la RHR y SpO2 respecto a la línea base. Una RHR elevada sostenida debe interpretarse como fatiga central o estrés del SNA. Para la SpO2, distingue entre una tendencia sostenida (relevante) y una caída aislada (probable artefacto por mala colocación del reloj, ver contexto).\n"
     "2. Analiza la arquitectura del sueño. ¿Se ha respetado el 30% de sueño profundo (esencial para recuperación física) y el 15% REM (recuperación cognitiva)?\n"
     "3. Compara con los análisis anteriores: ¿mejora, empeora o se mantiene la tendencia?\n"
     "4. Entrega un análisis técnico, conciso y profesional, evitando tono excesivamente conversacional o entusiasta.\n"
@@ -77,7 +75,7 @@ def build_prompt(instruccion_usuario: str, json_data: str, historial: str) -> st
     )
 
 
-def _load_env_candidates() -> Optional[Path]:
+def _load_env_candidates() -> Path | None:
     """Carga el archivo .env local si existe (busca en health_ai/ y en la raíz del repo)."""
     here = Path(__file__).resolve().parent
     candidates = [here / ".env", here.parent / ".env"]
@@ -116,7 +114,7 @@ def send_prompt_to_gemini(prompt: str) -> str:
     return response.text
 
 
-def run_analysis(instruccion_usuario: str, send_to_api: bool = True) -> Dict[str, Any]:
+def run_analysis(instruccion_usuario: str, send_to_api: bool = True) -> dict[str, Any]:
     """Construye el prompt (con historial de análisis previos) y opcionalmente lo envía a la API.
 
     Devuelve un dict con keys: 'prompt' y, si send_to_api es True, 'response'.
@@ -130,7 +128,7 @@ def run_analysis(instruccion_usuario: str, send_to_api: bool = True) -> Dict[str
 
     prompt = build_prompt(instruccion_usuario, datos_pretty, historial)
 
-    result: Dict[str, Any] = {"prompt": prompt}
+    result: dict[str, Any] = {"prompt": prompt}
 
     if send_to_api:
         response_text = send_prompt_to_gemini(prompt)

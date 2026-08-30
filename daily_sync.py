@@ -82,7 +82,35 @@ def main():
         log.exception("Fallo al sincronizar con Supabase")
         sys.exit(1)
 
+    push_daily_analysis()
+
     log.info("=== Sincronización diaria completada ===")
+
+
+def push_daily_analysis():
+    """Genera el análisis del día con Gemini y lo envía por Telegram.
+
+    Un fallo aquí NO debe tumbar la sync (que ya terminó bien): se registra y
+    se continúa.
+    """
+    try:
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
+        import django
+
+        django.setup()  # idempotente: no-op si ya está inicializado
+
+        from bot.config import DEFAULT_INSTRUCTION
+        from bot.notifier import send_message
+        from health_ai.pruebas import run_analysis
+
+        log.info("Generando análisis diario para Telegram…")
+        result = run_analysis(DEFAULT_INSTRUCTION, send_to_api=True)
+        if send_message(result["response"]):
+            log.info("Análisis diario enviado por Telegram.")
+        else:
+            log.warning("El análisis se generó pero falló el envío por Telegram.")
+    except Exception:
+        log.exception("Fallo al generar/enviar el análisis diario (la sync sí terminó bien)")
 
 
 if __name__ == "__main__":

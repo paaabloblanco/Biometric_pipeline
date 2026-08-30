@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 from django.apps import apps
 
