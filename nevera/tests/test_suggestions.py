@@ -1,0 +1,80 @@
+import unittest
+from datetime import date
+from unittest.mock import MagicMock, patch
+
+from nevera.suggestions import suggest_recipes
+
+
+def _item(nombre, cantidad, unidad, fecha_caducidad=None):
+    return MagicMock(nombre=nombre, cantidad=cantidad, unidad=unidad, fecha_caducidad=fecha_caducidad)
+
+
+class SuggestRecipesTests(unittest.TestCase):
+    def test_nevera_vacia_lanza_error(self):
+        with self.assertRaises(ValueError):
+            suggest_recipes([], None)
+
+    @patch("nevera.suggestions.send_prompt_to_gemini")
+    def test_json_limpio(self, mock_send):
+        mock_send.return_value = (
+            '[{"nombre": "Pollo con arroz", "descripcion": "Rico en proteína.", '
+            '"ingredientes": [{"nombre": "pollo", "cantidad": 200, "unidad": "g"}, '
+            '{"nombre": "arroz", "cantidad": 100, "unidad": "g"}]}]'
+        )
+        items = [_item("pollo", 500, "g"), _item("arroz", 1000, "g")]
+        recetas = suggest_recipes(items, {"analysis_date": date(2026, 8, 29), "analysis_text": "buena recuperación"})
+
+        self.assertEqual(len(recetas), 1)
+        self.assertEqual(recetas[0]["nombre"], "Pollo con arroz")
+        self.assertEqual(len(recetas[0]["ingredientes"]), 2)
+
+        prompt_usado = mock_send.call_args[0][0]
+        self.assertIn("pollo", prompt_usado)
+        self.assertIn("buena recuperación", prompt_usado)
+        self.assertIn("fútbol sala", prompt_usado)
+        self.assertIn("antiinflamatorias", prompt_usado)
+        self.assertIn("comida real", prompt_usado)
+
+    @patch("nevera.suggestions.send_prompt_to_gemini")
+    def test_sin_analisis_previo_usa_texto_por_defecto(self, mock_send):
+        mock_send.return_value = '[{"nombre": "x", "descripcion": "d", "ingredientes": [{"nombre": "pollo", "cantidad": 1, "unidad": "ud"}]}]'
+        suggest_recipes([_item("pollo", 1, "ud")], None)
+        prompt_usado = mock_send.call_args[0][0]
+        self.assertIn("sin análisis previo", prompt_usado)
+
+    @patch("nevera.suggestions.send_prompt_to_gemini")
+    def test_con_fences_markdown(self, mock_send):
+        mock_send.return_value = (
+            '```json\n[{"nombre": "x", "descripcion": "d", '
+            '"ingredientes": [{"nombre": "pollo", "cantidad": 1, "unidad": "ud"}]}]\n```'
+        )
+        recetas = suggest_recipes([_item("pollo", 1, "ud")], None)
+        self.assertEqual(recetas[0]["nombre"], "x")
+
+    @patch("nevera.suggestions.send_prompt_to_gemini")
+    def test_respuesta_no_lista_lanza_error(self, mock_send):
+        mock_send.return_value = '{"nombre": "x"}'
+        with self.assertRaises(ValueError):
+            suggest_recipes([_item("pollo", 1, "ud")], None)
+
+    @patch("nevera.suggestions.send_prompt_to_gemini")
+    def test_json_invalido_lanza_error(self, mock_send):
+        mock_send.return_value = "no json"
+        with self.assertRaises(ValueError):
+            suggest_recipes([_item("pollo", 1, "ud")], None)
+
+    @patch("nevera.suggestions.send_prompt_to_gemini")
+    def test_receta_incompleta_lanza_error(self, mock_send):
+        mock_send.return_value = '[{"descripcion": "d"}]'
+        with self.assertRaises(ValueError):
+            suggest_recipes([_item("pollo", 1, "ud")], None)
+
+    @patch("nevera.suggestions.send_prompt_to_gemini")
+    def test_ingrediente_incompleto_lanza_error(self, mock_send):
+        mock_send.return_value = '[{"nombre": "x", "ingredientes": [{"cantidad": 1}]}]'
+        with self.assertRaises(ValueError):
+            suggest_recipes([_item("pollo", 1, "ud")], None)
+
+
+if __name__ == "__main__":
+    unittest.main()
