@@ -9,6 +9,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from api.auth import OwnerTokenObtainPairView
+from api.docs import SchemaView, SwaggerView
 from api.views import AnalysesView, HealthLastDayView, HealthSeriesView, NeveraView
 
 app_name = "api"
@@ -20,4 +21,7 @@ urlpatterns = [
     path("health/series", HealthSeriesView.as_view(), name="health-series"),
     path("analyses", AnalysesView.as_view(), name="analyses"),
     path("nevera", NeveraView.as_view(), name="nevera"),
+    # Documentación (ver api/docs.py). Requiere sesión de admin, no JWT.
+    path("schema/", SchemaView.as_view(), name="schema"),
+    path("docs/", SwaggerView.as_view(), name="docs"),
 ]

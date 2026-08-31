@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "rest_framework",
+    "drf_spectacular",
     "corsheaders",
     "supabase_data",
     "nevera",
@@ -135,9 +136,32 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("api.permissions.IsTheOwner",),
+    # Generador del esquema OpenAPI (drf-spectacular). Sustituye al generador
+    # propio de DRF, que está obsoleto y produce OpenAPI 2.
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+}
+
+
+# OpenAPI / Swagger UI (docs/SDD-web.md). El esquema se genera leyendo las
+# views y los serializers: es documentación derivada del código, no escrita a
+# mano, así que no puede quedarse desactualizada.
+SPECTACULAR_SETTINGS = {
+    "TITLE": "API de Proyecto Salud",
+    "DESCRIPTION": (
+        "API REST de un pipeline biométrico personal de un solo usuario. "
+        "Misma lógica de negocio (`*/services.py`) que el bot de Telegram; "
+        "esta es la interfaz que consume la SPA de React."
+    ),
+    "VERSION": "1.0.0",
+    # El esquema se sirve en su propia ruta (/api/schema/), no incrustado como
+    # un endpoint más dentro de la propia documentación.
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Recorta el prefijo común de las rutas en los nombres autogenerados.
+    "SCHEMA_PATH_PREFIX": "/api",
+    "SERVERS": [{"url": "/", "description": "Este servidor"}],
 }
