@@ -9,7 +9,7 @@ requires-python = ">=3.12"
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["*/migrations/*", "venv", ".venv"]
+extend-exclude = ["*/migrations/*", "venv", ".venv", "web"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "DTZ"]
@@ -34,7 +34,7 @@ ignore_missing_imports = true
 check_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-exclude = ['(^|/)(migrations|venv|\.venv)/', '^extractor\.py$']
+exclude = ['(^|/)(migrations|venv|\.venv|web)/', '^extractor\.py$']
 
 [tool.django-stubs]
 django_settings_module = "core.settings"

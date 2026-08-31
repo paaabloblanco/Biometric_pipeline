@@ -237,16 +237,31 @@ siguiente (igual que en el SDD de nevera).
    del resto del proyecto) + `curl` en vivo: login 401 con credenciales malas,
    400 sin cuerpo, 200 + access/refresh con el superusuario. Falta que el
    usuario cree su superusuario con `manage.py createsuperuser`.
-2. **Endpoints de solo lectura.** `/api/health/last-day`, `/api/analyses`,
-   `/api/nevera`, `/api/health/series` (+ la consulta de agregación nueva en
-   `supabase_data/services.py` con sus tests). Verificación: cada endpoint
-   devuelve los mismos datos que el comando de Telegram equivalente, contra la
-   Supabase real, autenticado.
-3. **Frontend base en Vercel.** Vite + React + TS + Router + TanStack Query +
-   Tailwind. Pantallas Login, Dashboard (last-day + gráficas Recharts),
+2. [hecho] **Endpoints de solo lectura.** `GET /api/health/last-day`
+   (`get_last_day_data`), `GET /api/analyses?limit=` (`get_recent_analyses`),
+   `GET /api/nevera` (`list_all`) y `GET /api/health/series?metric=&from=&to=`.
+   La agregación nueva es `supabase_data.services.get_series`: agrega por día
+   `heart_rate` / `resting_heart_rate` / `oxygen_saturation` (min/max/avg/count)
+   y `sleep` (minutos, excluyendo fases de vigilia); rango por defecto = últimos
+   30 días con datos. Views finas en `api/views.py` (llaman al mismo servicio
+   que el handler de Telegram equivalente), serializers en `api/serializers.py`.
+   Verificado con 13 tests (`api/tests/test_read_endpoints.py`, contra la
+   Supabase real, autenticados, con centinelas y limpieza en tearDown): auth
+   401 sin token, agregación de series, 400 en métrica/limit inválidos, paridad
+   de forma con los datos reales.
+3. [código listo, falta deploy] **Frontend base en Vercel.** Carpeta `web/`:
+   Vite + React 18 + TS + React Router + TanStack Query + Tailwind v4. Cliente
+   HTTP (`src/api/client.ts`) con JWT en `Authorization` y renovación única en
+   vuelo al recibir 401 (evento `salud:logout` cuando el refresh caduca).
+   Pantallas Login, Dashboard (last-day + gráficas Recharts de FC y sueño),
    Análisis (histórico) y Nevera (tabla con alerta de caducidad, solo ver).
-   Deploy a Vercel con `VITE_API_BASE_URL`. Verificación: desde el dominio de
-   Vercel se hace login y se ven datos reales del backend.
+   `vercel.json` con build y rewrite de SPA; `.env.example` con
+   `VITE_API_BASE_URL`. Verificado en local: `npm run build` (tsc + vite) y
+   `npm run test` (3 tests de vitest sobre el flujo de refresh del cliente) en
+   verde; `dev.py` ya tiene el CORS de `localhost:5173`.
+   **Pendiente del usuario:** crear el proyecto en Vercel apuntando a `web/`,
+   fijar `VITE_API_BASE_URL`, desplegar el backend en una URL pública y hacer
+   la prueba end-to-end (login + datos reales desde el dominio de Vercel).
 
 ### Iteración 2 — escrituras
 
