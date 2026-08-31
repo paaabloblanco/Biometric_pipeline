@@ -250,7 +250,7 @@ siguiente (igual que en el SDD de nevera).
    Supabase real, autenticados, con centinelas y limpieza en tearDown): auth
    401 sin token, agregación de series, 400 en métrica/limit inválidos, paridad
    de forma con los datos reales.
-3. [código listo, falta deploy] **Frontend base en Vercel.** Carpeta `frontend/`:
+3. [hecho y verificado e2e, 2026-08-31] **Frontend base en Vercel.** Carpeta `frontend/`:
    Vite + React 18 + TS + React Router + TanStack Query + Tailwind v4. Cliente
    HTTP (`src/api/client.ts`) con JWT en `Authorization` y renovación única en
    vuelo al recibir 401 (evento `salud:logout` cuando el refresh caduca).
@@ -260,9 +260,24 @@ siguiente (igual que en el SDD de nevera).
    `VITE_API_BASE_URL`. Verificado en local: `npm run build` (tsc + vite) y
    `npm run test` (3 tests de vitest sobre el flujo de refresh del cliente) en
    verde; `dev.py` ya tiene el CORS de `localhost:5173`.
-   **Pendiente del usuario:** crear el proyecto en Vercel con Root Directory `frontend`,
-   fijar `VITE_API_BASE_URL`, desplegar el backend en una URL pública y hacer
-   la prueba end-to-end (login + datos reales desde el dominio de Vercel).
+   **Verificación end-to-end (2026-08-31):** SPA desplegada en Vercel
+   (`biometric-pipeline.vercel.app`, Root Directory `frontend`) contra el
+   backend local expuesto con un túnel `cloudflared`, autorizado vía
+   `DEV_EXTRA_ALLOWED_HOSTS=.trycloudflare.com` y `DEV_EXTRA_CORS_ORIGINS`.
+   Login con el superusuario y datos reales de salud, análisis y nevera
+   visibles desde el dominio público. Procedimiento y `curl` de diagnóstico
+   por capas documentados en `frontend/README.md`.
+
+   Dos incidencias resueltas, ambas de configuración, no de código:
+   - `405` en `POST /api/auth/login` — `VITE_API_BASE_URL` sin definir hacía
+     que `client.ts` cayera a `""` y la SPA se llamara a sí misma; el hosting
+     estático de Vercel solo acepta `GET`.
+   - El valor no surtía efecto hasta **redesplegar**: Vite incrusta las
+     variables `VITE_*` en el bundle en tiempo de build, no las lee en runtime
+     (corolario de seguridad: nunca meter secretos en una variable `VITE_*`).
+
+   **Pendiente:** el backend sigue siendo local; el túnel es una prueba
+   puntual (URL nueva en cada arranque). Hosting real = SDD de nube.
 
 ### Iteración 2 — escrituras
 
