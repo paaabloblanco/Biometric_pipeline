@@ -61,6 +61,8 @@ venv/Scripts/python -m unittest discover -s . -p "test_*.py"
 ```
 
 Los tests corren **contra la base de datos real** (no hay BD de test): usan un
-prefijo único y limpian tras de sí. CI ejecuta lint + tipos + tests en cada push.
+prefijo único y limpian tras de sí. CI (`.github/workflows/ci.yml`) ejecuta
+`ruff` + `mypy` en cada push; el job de tests es opt-in (variable de repo
+`RUN_DB_TESTS=true` + secrets de la BD).
 
 Convenciones y reglas del repo: [`CLAUDE.md`](CLAUDE.md).
