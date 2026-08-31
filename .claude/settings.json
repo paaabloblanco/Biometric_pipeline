@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "venv/Scripts/python.exe .claude/hooks/block_secrets.py",
+            "command": "backend/venv/Scripts/python.exe .claude/hooks/block_secrets.py",
             "timeout": 15
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "venv/Scripts/python.exe .claude/hooks/block_push_main.py",
+            "command": "backend/venv/Scripts/python.exe .claude/hooks/block_push_main.py",
             "if": "Bash(git push*)",
             "timeout": 15
           }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "venv/Scripts/python.exe .claude/hooks/format_python.py",
+            "command": "backend/venv/Scripts/python.exe .claude/hooks/format_python.py",
             "timeout": 45
           }
         ]
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "venv/Scripts/python.exe .claude/hooks/quality_check.py",
+            "command": "backend/venv/Scripts/python.exe .claude/hooks/quality_check.py",
             "timeout": 90,
             "statusMessage": "Chequeo de calidad (ruff)…"
           }

@@ -94,10 +94,10 @@ api/
 Dependencias nuevas en `requirements.txt`: `djangorestframework`,
 `djangorestframework-simplejwt`, `django-cors-headers`.
 
-### 3.2 Frontend — nuevo repo/carpeta `web/`
+### 3.2 Frontend — carpeta `frontend/` (antes `web/`)
 
 ```
-web/
+frontend/
   package.json
   vite.config.ts
   src/
@@ -112,7 +112,7 @@ web/
 - **Gráficas:** Recharts (datos de salud por día).
 - **Estilos:** por decidir (§7-D). Propuesta: Tailwind + componentes propios
   mínimos, sin librería de componentes pesada.
-- **Deploy:** proyecto de Vercel apuntando a `web/`, build `vite build`,
+- **Deploy:** proyecto de Vercel con Root Directory `frontend`, build `vite build`,
   variable `VITE_API_BASE_URL` con la URL del backend.
 
 ## 4. Endpoints (primera iteración)
@@ -190,9 +190,10 @@ a la vista. La versión mínima segura es la de abajo (~1-2 h en fase 1).
 
 ## 7. Decisiones abiertas
 
-- **A. Repo del frontend.** **Resuelto: carpeta `web/` en el mismo repo**
-  (monorepo). Vercel apunta al subdirectorio. Cambios de API + frontend en el
-  mismo commit. _(2026-08-31, con el usuario)_
+- **A. Repo del frontend.** **Resuelto: monorepo con `backend/` + `frontend/`**
+  (antes el frontend estaba en `web/` y el backend en la raíz; reorganizado el
+  2026-08-31). Vercel apunta a `frontend/` (Root Directory). Cambios de API +
+  frontend en el mismo commit. _(2026-08-31, con el usuario)_
 - **B. Librería de API.** **Resuelto: Django REST Framework** + SimpleJWT para
   el login. Descartado Django Ninja por menos ecosistema y menos peso en
   ofertas de trabajo (el usuario apunta a cloud/DevOps). _(2026-08-31)_
@@ -249,7 +250,7 @@ siguiente (igual que en el SDD de nevera).
    Supabase real, autenticados, con centinelas y limpieza en tearDown): auth
    401 sin token, agregación de series, 400 en métrica/limit inválidos, paridad
    de forma con los datos reales.
-3. [código listo, falta deploy] **Frontend base en Vercel.** Carpeta `web/`:
+3. [código listo, falta deploy] **Frontend base en Vercel.** Carpeta `frontend/`:
    Vite + React 18 + TS + React Router + TanStack Query + Tailwind v4. Cliente
    HTTP (`src/api/client.ts`) con JWT en `Authorization` y renovación única en
    vuelo al recibir 401 (evento `salud:logout` cuando el refresh caduca).
@@ -259,7 +260,7 @@ siguiente (igual que en el SDD de nevera).
    `VITE_API_BASE_URL`. Verificado en local: `npm run build` (tsc + vite) y
    `npm run test` (3 tests de vitest sobre el flujo de refresh del cliente) en
    verde; `dev.py` ya tiene el CORS de `localhost:5173`.
-   **Pendiente del usuario:** crear el proyecto en Vercel apuntando a `web/`,
+   **Pendiente del usuario:** crear el proyecto en Vercel con Root Directory `frontend`,
    fijar `VITE_API_BASE_URL`, desplegar el backend en una URL pública y hacer
    la prueba end-to-end (login + datos reales desde el dominio de Vercel).
 

@@ -5,8 +5,13 @@ mano (ver CLAUDE.md). No bloquea: solo muestra un aviso si algo está mal.
 """
 
 import json
+import os
 import subprocess
 import sys
+
+# Todo el código Python vive en backend/ (ver CLAUDE.md). Los checks se corren
+# con ese directorio como cwd.
+BACKEND = os.path.join(os.path.dirname(__file__), "..", "..", "backend")
 
 CHECKS = (
     ["-m", "ruff", "check", "."],
@@ -18,7 +23,13 @@ def main() -> None:
     problems = []
     for args in CHECKS:
         try:
-            r = subprocess.run([sys.executable, *args], capture_output=True, text=True, timeout=60)
+            r = subprocess.run(
+                [sys.executable, *args],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=BACKEND,
+            )
         except (OSError, subprocess.SubprocessError):
             continue
         if r.returncode != 0:
@@ -26,7 +37,9 @@ def main() -> None:
             problems.append(f"$ python {label}\n{(r.stdout + r.stderr).strip()}")
 
     if problems:
-        msg = "Calidad (hook Stop) — revisa antes de commitear:\n\n" + "\n\n".join(problems)
+        msg = "Calidad (hook Stop) — revisa antes de commitear:\n\n" + "\n\n".join(
+            problems
+        )
         print(json.dumps({"systemMessage": msg[:1800]}))
 
 

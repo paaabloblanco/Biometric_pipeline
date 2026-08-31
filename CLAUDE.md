@@ -2,6 +2,48 @@
 
 Guía para trabajar en este repo. Léela antes de tocar código.
 
+## Propósito: esto es un proyecto de APRENDIZAJE
+
+El objetivo no es solo que el pipeline funcione: es que el usuario **entienda y
+sepa explicar** lo que hay montado. Aspira a trabajar en desarrollo/cloud, así
+que el proyecto es a la vez portfolio y material de estudio. Esto **prevalece
+sobre la velocidad**: es preferible una entrega más lenta y entendida que una
+rápida y opaca.
+
+**Cómo se traduce en cada intervención:**
+
+- **Nombra los conceptos con su nombre técnico.** No digas "la carpeta donde
+  está la lógica": di *capa de servicio (service layer)*. No digas "el fichero
+  que traduce el modelo a JSON": di *serializador*. El usuario quiere el
+  vocabulario que se usa en entrevistas y en equipos reales, en español y con
+  el término inglés entre paréntesis la primera vez.
+- **Explica el porqué arquitectónico, no solo el qué.** Cada decisión de diseño
+  (por qué `services.py` y no lógica en las vistas, por qué `managed=False`,
+  por qué JWT y no sesiones, por qué monorepo) lleva un trade-off detrás.
+  Explícalo: qué se gana, qué se pierde, qué alternativa se descartó.
+- **Antes de introducir cualquier herramienta nueva, explica su uso
+  empresarial.** Qué problema resuelve, quién la usa y para qué en una empresa
+  de verdad, cómo encaja en un equipo (quién la toca, en qué momento del ciclo),
+  y cuáles son las alternativas del mercado. Ejemplos de cosas que el usuario
+  aún no conoce y que hay que explicar cuando aparezcan: el **admin de Django**,
+  **Swagger/OpenAPI**, migraciones, ORM vs SQL crudo, CI/CD, contenedores.
+- **Explica cómo se gestionan los datos en la práctica.** Cuando toquemos la BD:
+  cuál es la forma idiomática y eficiente de leer/escribir con el ORM
+  (`select_related`, problema N+1, transacciones, `bulk_create`), qué se hace a
+  mano y qué se automatiza, y cómo se cambian datos en producción de verdad
+  (admin, shell, comando de gestión, migración de datos) y cuándo cada uno.
+- **Enseña las herramientas de diagnóstico**, no solo la solución. Cómo leer un
+  traceback, cómo mirar el SQL que genera el ORM, dónde están los logs.
+- **Pregunta antes de asumir nivel.** Si un concepto es prerequisito de lo que
+  viene, comprueba si lo conoce en vez de darlo por sabido o de explicar algo
+  que ya domina.
+
+**Excepción de autoría:** en la línea de trabajo de infraestructura (Docker,
+Azure, Terraform, CI/CD) el usuario quiere **escribir él el código**: ahí actúa
+como mentor socrático — preguntas guía y pasos pequeños verificables, no
+implementación directa. En el resto del repo se implementa normal, pero con la
+explicación por delante.
+
 ## Qué es
 
 Pipeline biométrico personal de un solo usuario:
@@ -13,7 +55,7 @@ Pipeline biométrico personal de un solo usuario:
    crudos + el historial de análisis y lo manda a Gemini (`google-genai`).
 3. **Bot de Telegram** (`bot/`) — interfaz de captura y consulta (análisis,
    nevera, sugerencias de comida, ofertas). Long polling, un solo proceso.
-4. **Interfaz web** (`api/` + `web/`, en construcción) — segunda interfaz de
+4. **Interfaz web** (`backend/api/` + `frontend/`, en construcción) — segunda interfaz de
    consulta/gestión: API REST (DRF) sobre los mismos servicios + SPA React en
    Vercel. Ver `docs/SDD-web.md`.
 
@@ -26,15 +68,21 @@ Pipeline biométrico personal de un solo usuario:
 
 ## Layout
 
+Monorepo: `backend/` (todo Python) + `frontend/` (SPA React, Vercel). Los
+comandos Python (venv, manage.py, ruff, tests) se ejecutan **desde `backend/`**.
+
 ```
-core/              # proyecto Django. settings/ es un paquete (ver abajo)
-extractor.py       # sync SQLite -> Supabase
-daily_sync.py      # orquesta la sync diaria + push del análisis
-health_ai/pruebas.py   # prompt + llamada a Gemini (run_analysis)
-supabase_data/     # modelos de SOLO LECTURA sobre tablas del sync (managed=False)
-nevera/            # inventario de nevera (tablas propias, managed=True)
-bot/               # bot de Telegram: main.py (arranque) + handlers.py + services
-api/               # API REST para la web (capa fina, sin lógica de negocio)
+backend/
+  core/            # proyecto Django. settings/ es un paquete (ver abajo)
+  extractor.py     # sync SQLite -> Supabase
+  daily_sync.py    # orquesta la sync diaria + push del análisis
+  health_ai/pruebas.py   # prompt + llamada a Gemini (run_analysis)
+  supabase_data/   # modelos de SOLO LECTURA sobre tablas del sync (managed=False)
+  nevera/          # inventario de nevera (tablas propias, managed=True)
+  bot/             # bot de Telegram: main.py (arranque) + handlers.py + services
+  api/             # API REST para la web (capa fina, sin lógica de negocio)
+  venv/  manage.py  pyproject.toml  requirements*.txt  .env
+frontend/          # SPA React + Vite, deploy en Vercel (Root Directory = frontend)
 docs/              # SDDs (documentos de diseño por feature)
 ```
 
@@ -65,6 +113,8 @@ docs/              # SDDs (documentos de diseño por feature)
 ## Comandos
 
 ```bash
+cd backend   # todos los comandos Python parten de aquí
+
 # entorno
 venv/Scripts/python -m pip install -r requirements-dev.txt
 
@@ -82,6 +132,9 @@ venv/Scripts/python manage.py migrate
 venv/Scripts/python -m bot.main            # bot (long polling)
 venv/Scripts/python daily_sync.py          # sync diaria manual
 DJANGO_ENV=dev venv/Scripts/python manage.py runserver   # API
+
+# frontend (desde frontend/)
+npm install && npm run dev
 ```
 
 ## Hooks (`.claude/`)

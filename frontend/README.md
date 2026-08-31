@@ -1,7 +1,7 @@
-# web/ — interfaz web (SPA React)
+# frontend/ — interfaz web (SPA React)
 
 Segundo cliente del backend, junto al bot de Telegram. Consume la API DRF
-(`api/`) del proyecto Django. Ver `docs/SDD-web.md`.
+(`backend/api/`) del proyecto Django. Ver `docs/SDD-web.md`.
 
 ## Stack
 
@@ -11,7 +11,7 @@ Tailwind CSS v4.
 ## Desarrollo
 
 ```bash
-cd web
+cd frontend
 npm install
 cp .env.example .env        # ajusta VITE_API_BASE_URL si hace falta
 npm run dev                 # http://localhost:5173
@@ -20,7 +20,7 @@ npm run dev                 # http://localhost:5173
 El backend tiene que estar corriendo aparte:
 
 ```bash
-DJANGO_ENV=dev venv/Scripts/python manage.py runserver   # http://localhost:8000
+cd backend && DJANGO_ENV=dev venv/Scripts/python manage.py runserver   # http://localhost:8000
 ```
 
 `dev.py` ya permite el origen `localhost:5173` en CORS.
@@ -35,7 +35,7 @@ npm run test        # vitest (lógica del cliente HTTP)
 
 ## Deploy (Vercel)
 
-Proyecto de Vercel apuntando a `web/` (monorepo, decisión §7-A del SDD).
+Proyecto de Vercel con **Root Directory = `frontend`** (monorepo, decisión §7-A del SDD).
 `vercel.json` fija build y el rewrite de SPA. Variable de entorno del proyecto:
 `VITE_API_BASE_URL` = URL pública del backend.
 
