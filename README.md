@@ -10,7 +10,7 @@ Pipeline biométrico personal: sincroniza los datos de **Health Connect** a
 
 ```
 Health Connect (export SQLite)
-        │  extractor.py / daily_sync.py
+        │  backend/extractor.py / backend/daily_sync.py
         ▼
    Supabase (Postgres) ──────────────┐
         │                            │
@@ -20,8 +20,11 @@ Health Connect (export SQLite)
         │                            │
         ├──────────────┬─────────────┤
         ▼              ▼             ▼
-   bot/ (Telegram)   api/ (DRF)   web/ (React, Vercel) — en construcción
+   bot/ (Telegram)   api/ (DRF)   frontend/ (React, Vercel) — en construcción
 ```
+
+El repo es un monorepo: **`backend/`** (Django: API, bot, sync, análisis) y
+**`frontend/`** (SPA React desplegada en Vercel).
 
 - **Toda la lógica vive en `*/services.py`.** El bot y la API son clientes
   finos de esos servicios; comparten la misma base de datos.
@@ -32,6 +35,7 @@ Health Connect (export SQLite)
 ## Puesta en marcha
 
 ```bash
+cd backend
 python -m venv venv
 venv/Scripts/python -m pip install -r requirements-dev.txt   # o requirements.txt sin las herramientas
 
@@ -39,6 +43,9 @@ cp .env.example .env        # y rellena los valores (Supabase, Gemini, Telegram)
 venv/Scripts/python manage.py migrate
 venv/Scripts/python manage.py createsuperuser   # para la API web
 ```
+
+Todos los comandos Python se ejecutan desde `backend/`. El frontend vive en
+`frontend/` (`cd frontend && npm install && npm run dev`).
 
 ### Ejecutar
 
