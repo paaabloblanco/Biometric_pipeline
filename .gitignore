@@ -27,6 +27,11 @@ venv/
 env/
 ENV/
 
+# ==== Frontend (web/) ====
+node_modules/
+web/dist/
+web/*.local
+
 # ==== Distribución / empaquetado ====
 build/
 dist/
