@@ -84,6 +84,19 @@ venv/Scripts/python daily_sync.py          # sync diaria manual
 DJANGO_ENV=dev venv/Scripts/python manage.py runserver   # API
 ```
 
+## Hooks (`.claude/`)
+
+Guardarraíles automáticos (`.claude/settings.json` + `.claude/hooks/*.py`):
+
+| Cuándo | Qué hace |
+|---|---|
+| Antes de editar | Bloquea escrituras a `.env`, `*.pem`, `*.key`, `credentials.json`… (permite `.env.example`) |
+| Antes de `git push` | Pide confirmación si el push va a `main` |
+| Tras editar un `.py` | `ruff format` + orden de imports sobre ese fichero |
+| Al terminar (Stop) | `ruff check` + `ruff format --check`; avisa si algo falla (no bloquea) |
+
+Tras clonar o si no se activan: abrir `/hooks` una vez o reiniciar Claude Code.
+
 ## Reglas críticas
 
 - **Nunca** subas `.env` ni ningún secreto (hay historial de una `SECRET_KEY`

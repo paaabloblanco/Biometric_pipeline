@@ -52,3 +52,6 @@ htmlcov/
 # ==== Sistema operativo ====
 .DS_Store
 Thumbs.db
+
+# Claude Code overrides personales
+.claude/settings.local.json
