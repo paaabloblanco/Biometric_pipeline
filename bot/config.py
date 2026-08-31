@@ -39,7 +39,7 @@ def _parse_chat_ids(raw: str | None) -> frozenset[int]:
         except ValueError:
             raise ValueError(
                 f"TELEGRAM_ALLOWED_CHAT_IDS contiene un valor no numérico: {part!r}"
-            )
+            ) from None
     return frozenset(ids)
 
 

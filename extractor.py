@@ -185,7 +185,11 @@ def push(supabase: Client, table: str, rows: list[dict], on_conflict: str) -> bo
             ok = False
             log.error(
                 "  %s: ERROR subiendo filas %d-%d (%s: %s)",
-                table, i, i + len(chunk), exc.__class__.__name__, exc,
+                table,
+                i,
+                i + len(chunk),
+                exc.__class__.__name__,
+                exc,
             )
     if ok:
         log.info("  %s: %d filas sincronizadas.", table, len(rows))
@@ -249,7 +253,10 @@ def sync_source(conn, supabase, source: dict, today: date) -> tuple[bool, bool]:
     if stale:
         log.warning(
             "[%s] último dato el %s (%d días atrás). ¿Ha dejado de sincronizarse "
-            "esta métrica en Health Connect?", name, day, age,
+            "esta métrica en Health Connect?",
+            name,
+            day,
+            age,
         )
 
     start_ms, end_ms = local_day_window_ms(day)
@@ -261,9 +268,7 @@ def sync_source(conn, supabase, source: dict, today: date) -> tuple[bool, bool]:
 
 def main():
     if not logging.getLogger().handlers:
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-        )
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     url = os.environ["SUPABASE_URL"]
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -280,7 +285,9 @@ def main():
     stales = [r[1] for r in results]
 
     if all(stales):
-        log.error("Ninguna tabla tiene datos recientes. ¿Export de Health Connect vacío o corrupto?")
+        log.error(
+            "Ninguna tabla tiene datos recientes. ¿Export de Health Connect vacío o corrupto?"
+        )
         sys.exit(1)
     if not all(push_oks):
         log.error("Sync terminada con errores en al menos una tabla.")

@@ -5,15 +5,15 @@ from nevera.ofertas import analizar_ofertas
 
 
 def _item(nombre, cantidad, unidad, fecha_caducidad=None):
-    return MagicMock(nombre=nombre, cantidad=cantidad, unidad=unidad, fecha_caducidad=fecha_caducidad)
+    return MagicMock(
+        nombre=nombre, cantidad=cantidad, unidad=unidad, fecha_caducidad=fecha_caducidad
+    )
 
 
 class AnalizarOfertasTests(unittest.TestCase):
     @patch("nevera.ofertas.send_prompt_to_gemini")
     def test_json_limpio(self, mock_send):
-        mock_send.return_value = (
-            '[{"nombre": "Pechuga de pollo", "motivo": "Ya casi no te queda proteína.", "precio": "5,99 zl"}]'
-        )
+        mock_send.return_value = '[{"nombre": "Pechuga de pollo", "motivo": "Ya casi no te queda proteína.", "precio": "5,99 zl"}]'
         items = [_item("pollo", 100, "g")]
         recomendaciones = analizar_ofertas("Pechuga de pollo 5,99 zl", items)
 

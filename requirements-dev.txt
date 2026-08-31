@@ -1,0 +1,13 @@
+# Herramientas de desarrollo (lint, tipos, tests). No necesarias en runtime.
+#   pip install -r requirements-dev.txt
+-r requirements.txt
+
+ruff==0.16.5
+mypy==2.3.1
+mypy_extensions==1.1.0
+django-stubs==6.1.0
+django-stubs-ext==6.1.0
+djangorestframework-stubs==3.18.1
+types-PyYAML==6.0.12.20260815
+pytest==9.1.1
+pytest-django==4.14.0

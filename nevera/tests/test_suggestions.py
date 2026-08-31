@@ -6,7 +6,9 @@ from nevera.suggestions import suggest_recipes
 
 
 def _item(nombre, cantidad, unidad, fecha_caducidad=None):
-    return MagicMock(nombre=nombre, cantidad=cantidad, unidad=unidad, fecha_caducidad=fecha_caducidad)
+    return MagicMock(
+        nombre=nombre, cantidad=cantidad, unidad=unidad, fecha_caducidad=fecha_caducidad
+    )
 
 
 class SuggestRecipesTests(unittest.TestCase):
@@ -22,7 +24,9 @@ class SuggestRecipesTests(unittest.TestCase):
             '{"nombre": "arroz", "cantidad": 100, "unidad": "g"}]}]'
         )
         items = [_item("pollo", 500, "g"), _item("arroz", 1000, "g")]
-        recetas = suggest_recipes(items, {"analysis_date": date(2026, 8, 29), "analysis_text": "buena recuperación"})
+        recetas = suggest_recipes(
+            items, {"analysis_date": date(2026, 8, 29), "analysis_text": "buena recuperación"}
+        )
 
         self.assertEqual(len(recetas), 1)
         self.assertEqual(recetas[0]["nombre"], "Pollo con arroz")

@@ -36,7 +36,13 @@ class AnadirFlowTests(unittest.IsolatedAsyncioTestCase):
     @patch("nevera.parsing.parse_compra_text")
     async def test_anadir_guarda_pendiente_y_pide_confirmacion(self, mock_parse):
         mock_parse.return_value = [
-            {"nombre": "leche", "cantidad": 1, "unidad": "l", "categoria": "lacteo", "fecha_caducidad": None}
+            {
+                "nombre": "leche",
+                "cantidad": 1,
+                "unidad": "l",
+                "categoria": "lacteo",
+                "fecha_caducidad": None,
+            }
         ]
         update, context = _fake_update(chat_id=42, args=["1", "leche"])
         await handlers.añadir(update, context)
@@ -48,7 +54,15 @@ class AnadirFlowTests(unittest.IsolatedAsyncioTestCase):
 
     @patch("nevera.parsing.parse_compra_text")
     async def test_anadir_unidad_desconocida_no_guarda_pendiente(self, mock_parse):
-        mock_parse.return_value = [{"nombre": "misterio", "cantidad": 1, "unidad": "bolsas", "categoria": None, "fecha_caducidad": None}]
+        mock_parse.return_value = [
+            {
+                "nombre": "misterio",
+                "cantidad": 1,
+                "unidad": "bolsas",
+                "categoria": None,
+                "fecha_caducidad": None,
+            }
+        ]
         update, context = _fake_update(chat_id=7, args=["misterio"])
         await handlers.añadir(update, context)
 
@@ -134,9 +148,13 @@ class BorrarEditarTests(unittest.IsolatedAsyncioTestCase):
     @patch("nevera.services.edit_item")
     async def test_editar_ok(self, mock_edit):
         mock_edit.return_value = MagicMock()
-        update, context = _fake_update(args=["3", "cantidad=1", "unidad=kg", "fecha_caducidad=2026-09-01"])
+        update, context = _fake_update(
+            args=["3", "cantidad=1", "unidad=kg", "fecha_caducidad=2026-09-01"]
+        )
         await handlers.editar(update, context)
-        mock_edit.assert_called_once_with(3, cantidad=1.0, unidad="kg", fecha_caducidad=date(2026, 9, 1))
+        mock_edit.assert_called_once_with(
+            3, cantidad=1.0, unidad="kg", fecha_caducidad=date(2026, 9, 1)
+        )
         self.assertIn("Actualizado", update.effective_message.reply_text.call_args[0][0])
 
     @patch("nevera.services.edit_item", return_value=None)
@@ -160,7 +178,14 @@ class NeveraListTests(unittest.IsolatedAsyncioTestCase):
 
     @patch("nevera.services.list_all")
     async def test_nevera_con_items(self, mock_list):
-        item = MagicMock(id=1, nombre="leche", categoria="lacteo", cantidad=1000, unidad="ml", fecha_caducidad=None)
+        item = MagicMock(
+            id=1,
+            nombre="leche",
+            categoria="lacteo",
+            cantidad=1000,
+            unidad="ml",
+            fecha_caducidad=None,
+        )
         mock_list.return_value = [item]
         update, context = _fake_update()
         await handlers.nevera_cmd(update, context)
@@ -172,10 +197,22 @@ class NeveraListTests(unittest.IsolatedAsyncioTestCase):
 
 class FormatoNeveraTests(unittest.TestCase):
     def test_agrupa_por_categoria_y_alerta_caducidad_proxima(self):
-        proximo = MagicMock(id=1, nombre="yogur", categoria="lacteo", cantidad=4, unidad="ud",
-                             fecha_caducidad=date.today())
-        lejano = MagicMock(id=2, nombre="arroz", categoria="cereal", cantidad=1000, unidad="g",
-                            fecha_caducidad=date(2027, 1, 1))
+        proximo = MagicMock(
+            id=1,
+            nombre="yogur",
+            categoria="lacteo",
+            cantidad=4,
+            unidad="ud",
+            fecha_caducidad=date.today(),
+        )
+        lejano = MagicMock(
+            id=2,
+            nombre="arroz",
+            categoria="cereal",
+            cantidad=1000,
+            unidad="g",
+            fecha_caducidad=date(2027, 1, 1),
+        )
         texto = handlers._formato_nevera([proximo, lejano])
         self.assertIn("caduca pronto", texto)
         self.assertNotIn("arroz ⚠️", texto)
@@ -206,7 +243,11 @@ class ComerHechoTests(unittest.IsolatedAsyncioTestCase):
         mock_items.return_value = [MagicMock(nombre="pollo")]
         mock_analyses.return_value = [{"analysis_date": date(2026, 8, 29), "analysis_text": "ok"}]
         mock_suggest.return_value = [
-            {"nombre": "Pollo al horno", "descripcion": "Fácil", "ingredientes": [{"nombre": "pollo", "cantidad": 200, "unidad": "g"}]}
+            {
+                "nombre": "Pollo al horno",
+                "descripcion": "Fácil",
+                "ingredientes": [{"nombre": "pollo", "cantidad": 200, "unidad": "g"}],
+            }
         ]
         update, context = _fake_update(chat_id=11)
         await handlers.comer(update, context)
@@ -224,7 +265,9 @@ class ComerHechoTests(unittest.IsolatedAsyncioTestCase):
     async def test_hecho_sin_sugerencia_pendiente(self):
         update, context = _fake_update(chat_id=20, args=["1"])
         await handlers.hecho(update, context)
-        self.assertIn("No hay ninguna sugerencia", update.effective_message.reply_text.call_args[0][0])
+        self.assertIn(
+            "No hay ninguna sugerencia", update.effective_message.reply_text.call_args[0][0]
+        )
 
     async def test_hecho_indice_fuera_de_rango(self):
         handlers._pending_recetas[21] = [{"nombre": "x", "ingredientes": []}]
@@ -239,7 +282,10 @@ class ComerHechoTests(unittest.IsolatedAsyncioTestCase):
             "no_encontrados": [],
         }
         handlers._pending_recetas[22] = [
-            {"nombre": "Pollo", "ingredientes": [{"nombre": "pollo", "cantidad": 200, "unidad": "g"}]}
+            {
+                "nombre": "Pollo",
+                "ingredientes": [{"nombre": "pollo", "cantidad": 200, "unidad": "g"}],
+            }
         ]
         update, context = _fake_update(chat_id=22, args=["1"])
         await handlers.hecho(update, context)
@@ -257,7 +303,10 @@ class ComerHechoTests(unittest.IsolatedAsyncioTestCase):
             "no_encontrados": [{"nombre": "pollo", "unidad": "g", "cantidad": 200}],
         }
         handlers._pending_recetas[23] = [
-            {"nombre": "Pollo", "ingredientes": [{"nombre": "pollo", "cantidad": 200, "unidad": "g"}]}
+            {
+                "nombre": "Pollo",
+                "ingredientes": [{"nombre": "pollo", "cantidad": 200, "unidad": "g"}],
+            }
         ]
         update, context = _fake_update(chat_id=23, args=["1"])
         await handlers.hecho(update, context)
@@ -289,7 +338,11 @@ class ComprarTests(unittest.IsolatedAsyncioTestCase):
     @patch("nevera.services.list_all", return_value=[])
     async def test_comprar_con_recomendaciones(self, mock_list, mock_analizar):
         mock_analizar.return_value = [
-            {"nombre": "Pechuga de pollo", "motivo": "Se te acaba la proteína.", "precio": "5,99 zl"}
+            {
+                "nombre": "Pechuga de pollo",
+                "motivo": "Se te acaba la proteína.",
+                "precio": "5,99 zl",
+            }
         ]
         update, context = _fake_update(args=["pechuga", "5,99", "zl"])
         await handlers.comprar(update, context)
@@ -297,7 +350,9 @@ class ComprarTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Pechuga de pollo", texto)
         self.assertIn("5,99 zl", texto)
 
-    @patch("nevera.ofertas.analizar_ofertas", side_effect=ValueError("Gemini no devolvió JSON válido"))
+    @patch(
+        "nevera.ofertas.analizar_ofertas", side_effect=ValueError("Gemini no devolvió JSON válido")
+    )
     @patch("nevera.services.list_all", return_value=[])
     async def test_comprar_error_en_analisis(self, mock_list, mock_analizar):
         update, context = _fake_update(args=["texto", "raro"])

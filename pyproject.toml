@@ -1,0 +1,57 @@
+[project]
+name = "proyecto-salud"
+version = "0.1.0"
+description = "Pipeline biométrico personal: sync Health Connect -> Supabase, análisis con Gemini, bot de Telegram e interfaz web."
+requires-python = ">=3.12"
+
+# Dependencias en requirements.txt (runtime) y requirements-dev.txt (herramientas).
+# pyproject.toml solo centraliza la config de ruff / mypy / pytest.
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["*/migrations/*", "venv", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "DTZ"]
+ignore = [
+    "SIM105",  # try/except/pass explícito se lee mejor que contextlib.suppress aquí
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Estos módulos tienen que inicializar Django (django.setup()) antes de importar
+# modelos/servicios: el orden de imports es intencionado.
+"health_ai/*" = ["E402", "E501"]  # E501: los PROMPT_TEMPLATE son texto largo a propósito
+"extractor.py" = ["E402"]
+"daily_sync.py" = ["E402"]
+"**/tests/*" = ["E402", "E501", "DTZ011"]  # los tests no necesitan tz-aware ni 100 cols
+"**/services.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main"]
+# Base pragmática: útil sin exigir anotar todo el código heredado.
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+exclude = ['(^|/)(migrations|venv|\.venv)/', '^extractor\.py$']
+
+[tool.django-stubs]
+django_settings_module = "core.settings"
+
+[[tool.mypy.overrides]]
+# Los tests usan mucho Mock/patch; no aportan valor bajo mypy estricto.
+module = ["*.tests.*", "*.tests"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# python-telegram-bot tipa update.effective_message / effective_chat como
+# Optional; en un handler registrado nunca son None. El decorador @restricted
+# ya corta los updates sin chat. No aporta perseguir cada acceso.
+module = ["bot.*"]
+disable_error_code = ["union-attr"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "core.settings"
+python_files = ["test_*.py"]
+testpaths = ["api", "bot", "nevera"]

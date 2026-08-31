@@ -23,7 +23,7 @@ class ParseCompraTextTests(unittest.TestCase):
     @patch("nevera.parsing.send_prompt_to_gemini")
     def test_json_con_fences_markdown(self, mock_send):
         mock_send.return_value = (
-            "```json\n[{\"nombre\": \"pollo\", \"cantidad\": 500, \"unidad\": \"g\"}]\n```"
+            '```json\n[{"nombre": "pollo", "cantidad": 500, "unidad": "g"}]\n```'
         )
         items = parse_compra_text("500g pollo")
         self.assertEqual(items[0]["nombre"], "pollo")

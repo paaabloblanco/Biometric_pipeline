@@ -71,10 +71,14 @@ def get_last_day_data():
             HeartRateSamples.objects.filter(recorded_at__date=target_day).order_by("recorded_at")
         ),
         "oxygen_saturation_samples": serialize_queryset(
-            OxygenSaturationSamples.objects.filter(recorded_at__date=target_day).order_by("recorded_at")
+            OxygenSaturationSamples.objects.filter(recorded_at__date=target_day).order_by(
+                "recorded_at"
+            )
         ),
         "resting_heart_rate_samples": serialize_queryset(
-            RestingHeartRateSamples.objects.filter(recorded_at__date=target_day).order_by("recorded_at")
+            RestingHeartRateSamples.objects.filter(recorded_at__date=target_day).order_by(
+                "recorded_at"
+            )
         ),
         "sleep_stages": serialize_queryset(
             SleepStages.objects.filter(stage_start__date=target_day).order_by("stage_start")

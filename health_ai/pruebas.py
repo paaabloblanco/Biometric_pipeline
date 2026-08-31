@@ -13,7 +13,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 # La consola de Windows por defecto usa cp1252, que no soporta emojis del prompt.
-sys.stdout.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 # Asegurar que Django se inicialice antes de importar modelos
@@ -26,7 +26,7 @@ from supabase_data.services import get_last_day_data, get_recent_analyses, save_
 HISTORY_DAYS = 7
 
 PROMPT_TEMPLATE = (
-    "Actúa como un científico deportivo y analista de rendimiento de élite. El usuario te ha solicitado: \"{instruccion_usuario}\"\n"
+    'Actúa como un científico deportivo y analista de rendimiento de élite. El usuario te ha solicitado: "{instruccion_usuario}"\n'
     "\n"
     "A continuación, se proporcionan datos biométricos crudos en formato JSON extraídos del ecosistema de monitorización del atleta. \n"
     "\n"
@@ -144,7 +144,7 @@ def run_analysis(instruccion_usuario: str, send_to_api: bool = True) -> dict[str
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Uso: python health_ai/pruebas.py \"<instruccion_usuario>\" [--no-send]")
+        print('Uso: python health_ai/pruebas.py "<instruccion_usuario>" [--no-send]')
         sys.exit(1)
 
     instruction = sys.argv[1]

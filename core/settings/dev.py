@@ -1,4 +1,5 @@
 """Entorno de desarrollo local."""
+
 from core.settings.base import *  # noqa: F401,F403
 
 DEBUG = True

@@ -81,8 +81,9 @@ def get_items_by_expiry(dias_limite: int | None = None):
 
 
 def consume_items(consumos: list[dict]):
-    """Resta cantidades del inventario. Cada consumo: {"nombre": str, "unidad": str, "cantidad": float}.
+    """Resta cantidades del inventario.
 
+    Cada consumo: {"nombre": str, "unidad": str, "cantidad": float}.
     Si la cantidad restante es <= 0, el item se elimina. Devuelve un resumen
     de lo aplicado y lo que no se pudo encontrar.
     """

@@ -51,9 +51,7 @@ def send_message(
                     resp = client.post(url, json=payload)
                     if resp.status_code == 400 and parse_mode:
                         # Markdown mal formado en el texto de Gemini: reintento en plano.
-                        resp = client.post(
-                            url, json={"chat_id": chat_id, "text": part}
-                        )
+                        resp = client.post(url, json={"chat_id": chat_id, "text": part})
                     resp.raise_for_status()
                 except Exception as exc:  # noqa: BLE001 - un chat fallido no debe cortar el resto
                     ok = False

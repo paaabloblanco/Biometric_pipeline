@@ -4,15 +4,14 @@ Las variables obligatorias fallan alto si faltan (mismo criterio que
 `DJANGO_SECRET_KEY` en base.py): es preferible no arrancar a arrancar inseguro.
 El despliegue real (dominio, HTTPS, dónde vive esto) es el siguiente SDD.
 """
+
 import os
 
 from core.settings.base import *  # noqa: F401,F403
 
 DEBUG = False
 
-ALLOWED_HOSTS = [
-    h.strip() for h in os.environ["DJANGO_ALLOWED_HOSTS"].split(",") if h.strip()
-]
+ALLOWED_HOSTS = [h.strip() for h in os.environ["DJANGO_ALLOWED_HOSTS"].split(",") if h.strip()]
 
 # Dominio(s) del frontend en Vercel, separados por comas.
 CORS_ALLOWED_ORIGINS = [

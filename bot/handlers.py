@@ -86,9 +86,7 @@ async def _reply_long(update: Update, text: str, parse_mode: str | None = "Markd
 
 @restricted
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text(
-        "Bot de salud activo.\n\n" + HELP_TEXT
-    )
+    await update.effective_message.reply_text("Bot de salud activo.\n\n" + HELP_TEXT)
 
 
 @restricted
@@ -133,9 +131,7 @@ async def historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("Todavía no hay análisis guardados.")
         return
 
-    bloques = [
-        f"*{a['analysis_date']}*\n{a['analysis_text']}" for a in analyses
-    ]
+    bloques = [f"*{a['analysis_date']}*\n{a['analysis_text']}" for a in analyses]
     await _reply_long(update, "\n\n———\n\n".join(bloques))
 
 
@@ -161,9 +157,7 @@ async def analisis(update: Update, context: ContextTypes.DEFAULT_TYPE):
             result = await asyncio.to_thread(run_analysis, instruccion, True)
         except Exception as exc:
             log.exception("Fallo en /analisis")
-            await update.effective_message.reply_text(
-                f"No se pudo completar el análisis: {exc}"
-            )
+            await update.effective_message.reply_text(f"No se pudo completar el análisis: {exc}")
             return
 
     await _reply_long(update, result["response"])
@@ -193,8 +187,7 @@ async def añadir(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     _pending_altas[chat_id] = items
     await update.effective_message.reply_text(
-        "He entendido:\n\n" + _formato_items(items) +
-        "\n\n¿Confirmo? /confirmar o /cancelar"
+        "He entendido:\n\n" + _formato_items(items) + "\n\n¿Confirmo? /confirmar o /cancelar"
     )
 
 
@@ -261,7 +254,9 @@ async def borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from nevera.services import delete_item
 
     borrado = await asyncio.to_thread(delete_item, item_id)
-    await update.effective_message.reply_text("Borrado." if borrado else f"No existe el item {item_id}.")
+    await update.effective_message.reply_text(
+        "Borrado." if borrado else f"No existe el item {item_id}."
+    )
 
 
 @restricted
@@ -283,7 +278,9 @@ async def editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cambios: dict = {}
     for par in args[1:]:
         if "=" not in par:
-            await update.effective_message.reply_text(f"Argumento inválido: {par!r} (usa campo=valor)")
+            await update.effective_message.reply_text(
+                f"Argumento inválido: {par!r} (usa campo=valor)"
+            )
             return
         campo, valor = par.split("=", 1)
         campo = campo.strip().lower()
@@ -365,7 +362,9 @@ async def hecho(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     args = _args(context)
     if not args:
-        await update.effective_message.reply_text("Uso: /hecho <n> (número de la sugerencia de /comer)")
+        await update.effective_message.reply_text(
+            "Uso: /hecho <n> (número de la sugerencia de /comer)"
+        )
         return
 
     try:
@@ -453,7 +452,8 @@ def _formato_recetas(recetas: list[dict], ultimo_analisis: dict | None) -> str:
             f"{ing['cantidad']} {ing['unidad']} {ing['nombre']}" for ing in receta["ingredientes"]
         )
         bloques.append(
-            f"*{i}. {receta['nombre']}*\n{receta.get('descripcion', '')}\nIngredientes: {ingredientes}"
+            f"*{i}. {receta['nombre']}*\n{receta.get('descripcion', '')}\n"
+            f"Ingredientes: {ingredientes}"
         )
 
     bloques.append("Cuando hagas una, confirma con /hecho <n>")
@@ -503,9 +503,8 @@ def _formato_nevera(items) -> str:
                 if (item.fecha_caducidad - hoy).days < 0:
                     alerta = " ⚠️ caducado"
             cad = f", caduca {item.fecha_caducidad}" if item.fecha_caducidad else ""
-            lineas.append(
-                f"#{item.id} {item.nombre}: {format_cantidad(item.cantidad, item.unidad)}{cad}{alerta}"
-            )
+            cantidad = format_cantidad(item.cantidad, item.unidad)
+            lineas.append(f"#{item.id} {item.nombre}: {cantidad}{cad}{alerta}")
         bloques.append("\n".join(lineas))
     return "\n\n".join(bloques)
 
@@ -520,7 +519,9 @@ def _summarize_day(data: dict) -> str:
     lines.append(f"• Frecuencia cardíaca: {len(hr)} muestras")
     if hr:
         bpms = [s["bpm"] for s in hr]
-        lines.append(f"  min {min(bpms)} / media {round(sum(bpms) / len(bpms))} / max {max(bpms)} bpm")
+        lines.append(
+            f"  min {min(bpms)} / media {round(sum(bpms) / len(bpms))} / max {max(bpms)} bpm"
+        )
 
     if resting:
         rbpms = [s["resting_bpm"] for s in resting]

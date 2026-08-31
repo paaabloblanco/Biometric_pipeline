@@ -42,31 +42,55 @@ class NeveraServicesTests(unittest.TestCase):
         hoy = date.today()
         services.add_items(
             [
-                {"nombre": f"{PREFIJO} pronto", "cantidad": 1, "unidad": "ud", "fecha_caducidad": hoy + timedelta(days=1)},
-                {"nombre": f"{PREFIJO} lejos", "cantidad": 1, "unidad": "ud", "fecha_caducidad": hoy + timedelta(days=30)},
+                {
+                    "nombre": f"{PREFIJO} pronto",
+                    "cantidad": 1,
+                    "unidad": "ud",
+                    "fecha_caducidad": hoy + timedelta(days=1),
+                },
+                {
+                    "nombre": f"{PREFIJO} lejos",
+                    "cantidad": 1,
+                    "unidad": "ud",
+                    "fecha_caducidad": hoy + timedelta(days=30),
+                },
                 {"nombre": f"{PREFIJO} sin_fecha", "cantidad": 1, "unidad": "ud"},
             ]
         )
 
         todos = [i for i in services.get_items_by_expiry() if i.nombre.startswith(PREFIJO)]
-        self.assertEqual([i.nombre for i in todos], [f"{PREFIJO} pronto", f"{PREFIJO} lejos", f"{PREFIJO} sin_fecha"])
+        self.assertEqual(
+            [i.nombre for i in todos],
+            [f"{PREFIJO} pronto", f"{PREFIJO} lejos", f"{PREFIJO} sin_fecha"],
+        )
 
-        urgentes = [i for i in services.get_items_by_expiry(dias_limite=5) if i.nombre.startswith(PREFIJO)]
+        urgentes = [
+            i for i in services.get_items_by_expiry(dias_limite=5) if i.nombre.startswith(PREFIJO)
+        ]
         self.assertEqual([i.nombre for i in urgentes], [f"{PREFIJO} pronto"])
 
     def test_consume_items_resta_y_elimina(self):
         services.add_items([{"nombre": f"{PREFIJO} pollo", "cantidad": 500, "unidad": "g"}])
 
-        resultado = services.consume_items([{"nombre": f"{PREFIJO} pollo", "unidad": "g", "cantidad": 200}])
-        self.assertEqual(resultado["aplicados"], [{"nombre": f"{PREFIJO} pollo", "unidad": "g", "restante": 300.0}])
+        resultado = services.consume_items(
+            [{"nombre": f"{PREFIJO} pollo", "unidad": "g", "cantidad": 200}]
+        )
+        self.assertEqual(
+            resultado["aplicados"],
+            [{"nombre": f"{PREFIJO} pollo", "unidad": "g", "restante": 300.0}],
+        )
         self.assertTrue(NeveraItem.objects.filter(nombre=f"{PREFIJO} pollo", unidad="g").exists())
 
-        resultado = services.consume_items([{"nombre": f"{PREFIJO} pollo", "unidad": "g", "cantidad": 300}])
+        resultado = services.consume_items(
+            [{"nombre": f"{PREFIJO} pollo", "unidad": "g", "cantidad": 300}]
+        )
         self.assertEqual(resultado["aplicados"][0]["restante"], 0)
         self.assertFalse(NeveraItem.objects.filter(nombre=f"{PREFIJO} pollo", unidad="g").exists())
 
     def test_consume_items_no_encontrado(self):
-        resultado = services.consume_items([{"nombre": f"{PREFIJO} inexistente", "unidad": "g", "cantidad": 1}])
+        resultado = services.consume_items(
+            [{"nombre": f"{PREFIJO} inexistente", "unidad": "g", "cantidad": 1}]
+        )
         self.assertEqual(resultado["aplicados"], [])
         self.assertEqual(len(resultado["no_encontrados"]), 1)
 
@@ -76,12 +100,16 @@ class NeveraServicesTests(unittest.TestCase):
         item = NeveraItem.objects.get(nombre=f"{PREFIJO} arroz", unidad="g")
         self.assertEqual(float(item.cantidad), 1500.0)
 
-        resultado = services.consume_items([{"nombre": f"{PREFIJO} arroz", "unidad": "kg", "cantidad": 0.5}])
+        resultado = services.consume_items(
+            [{"nombre": f"{PREFIJO} arroz", "unidad": "kg", "cantidad": 0.5}]
+        )
         self.assertEqual(resultado["aplicados"][0]["restante"], 1000.0)
 
     def test_unidad_desconocida_lanza_error(self):
         with self.assertRaises(ValueError):
-            services.add_items([{"nombre": f"{PREFIJO} misterio", "cantidad": 1, "unidad": "bolsas"}])
+            services.add_items(
+                [{"nombre": f"{PREFIJO} misterio", "cantidad": 1, "unidad": "bolsas"}]
+            )
 
     def test_delete_item(self):
         [item] = services.add_items([{"nombre": f"{PREFIJO} yogur", "cantidad": 4, "unidad": "ud"}])
@@ -90,10 +118,14 @@ class NeveraServicesTests(unittest.TestCase):
         self.assertFalse(services.delete_item(item.id))
 
     def test_edit_item(self):
-        [item] = services.add_items([{"nombre": f"{PREFIJO} queso", "cantidad": 200, "unidad": "g"}])
+        [item] = services.add_items(
+            [{"nombre": f"{PREFIJO} queso", "cantidad": 200, "unidad": "g"}]
+        )
         nueva_fecha = date.today() + timedelta(days=10)
 
-        actualizado = services.edit_item(item.id, cantidad=1, unidad="kg", categoria="lacteo", fecha_caducidad=nueva_fecha)
+        actualizado = services.edit_item(
+            item.id, cantidad=1, unidad="kg", categoria="lacteo", fecha_caducidad=nueva_fecha
+        )
         self.assertEqual(float(actualizado.cantidad), 1000.0)
         self.assertEqual(actualizado.unidad, "g")
         self.assertEqual(actualizado.categoria, "lacteo")

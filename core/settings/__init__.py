@@ -7,6 +7,7 @@ asgi, bot, servicios). El entorno concreto se elige con la variable de entorno
 - `dev` (por defecto): DEBUG on, hosts locales, CORS a localhost:5173.
 - `prod`: DEBUG off, hosts y CORS obligatorios por env, cabeceras de seguridad.
 """
+
 import os
 
 _env = os.getenv("DJANGO_ENV", "dev").lower()
