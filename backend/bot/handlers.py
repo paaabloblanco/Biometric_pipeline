@@ -392,10 +392,13 @@ async def comer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     _pending_recetas[chat_id] = recetas
-    texto = _formato_recetas(recetas, ultimo_analisis)
+    mensajes = _formato_recetas(recetas, ultimo_analisis)
     if avisos:
-        texto = "\n".join(avisos) + "\n\n" + texto
-    await _reply_long(update, texto)
+        mensajes[0] = "\n".join(avisos) + "\n" + mensajes[0]
+    for mensaje in mensajes:
+        # Cada mensaje por separado, pero pasando por _reply_long: una receta
+        # muy larga sigue pudiendo pasar del límite de 4096 de Telegram.
+        await _reply_long(update, mensaje)
 
 
 def _parse_exclusiones(args: list[str]) -> list[str]:
@@ -492,24 +495,35 @@ def _formato_ofertas(recomendaciones: list[dict]) -> str:
     return "\n".join(lineas)
 
 
-def _formato_recetas(recetas: list[dict], ultimo_analisis: dict | None) -> str:
-    bloques = []
+def _formato_recetas(recetas: list[dict], ultimo_analisis: dict | None) -> list[str]:
+    """Devuelve la lista de mensajes a enviar: cabecera, una receta por mensaje
+    y pie.
+
+    Una receta por mensaje para poder copiarla suelta (mantener pulsado ->
+    copiar en Telegram copia el mensaje entero) y pegarla donde busques cómo
+    prepararla. Por eso el mensaje de cada receta va limpio: sin la cabecera
+    del análisis ni el recordatorio de /hecho, que ensuciarían el pegado.
+
+    Los ingredientes van uno por línea por lo mismo: se leen mejor y se pegan
+    mejor que una lista separada por comas.
+    """
     if ultimo_analisis:
-        bloques.append(f"(Sugerencia según el análisis del {ultimo_analisis['analysis_date']})")
+        cabecera = f"(Sugerencia según el análisis del {ultimo_analisis['analysis_date']})"
     else:
-        bloques.append("(No hay ningún análisis de recuperación guardado todavía.)")
+        cabecera = "(No hay ningún análisis de recuperación guardado todavía.)"
 
+    mensajes = [cabecera]
     for i, receta in enumerate(recetas, start=1):
-        ingredientes = ", ".join(
-            f"{ing['cantidad']} {ing['unidad']} {ing['nombre']}" for ing in receta["ingredientes"]
+        ingredientes = "\n".join(
+            f"• {ing['cantidad']} {ing['unidad']} {ing['nombre']}" for ing in receta["ingredientes"]
         )
-        bloques.append(
-            f"*{i}. {receta['nombre']}*\n{receta.get('descripcion', '')}\n"
-            f"Ingredientes: {ingredientes}"
+        mensajes.append(
+            f"*{i}. {receta['nombre']}*\n{receta.get('descripcion', '')}\n\n"
+            f"Ingredientes:\n{ingredientes}"
         )
 
-    bloques.append("Cuando hagas una, confirma con /hecho <n>")
-    return "\n\n".join(bloques)
+    mensajes.append("Cuando hagas una, confirma con /hecho <n>")
+    return mensajes
 
 
 def _formato_resultado_hecho(receta: dict, resultado: dict) -> str:

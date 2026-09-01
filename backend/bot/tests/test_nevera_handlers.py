@@ -290,9 +290,34 @@ class ComerHechoTests(unittest.IsolatedAsyncioTestCase):
         await handlers.comer(update, context)
 
         self.assertIn(11, handlers._pending_recetas)
-        texto = update.effective_message.reply_text.call_args_list[0][0][0]
-        self.assertIn("Pollo al horno", texto)
-        self.assertIn("/hecho", texto)
+
+        # Cabecera, una receta por mensaje y pie: tres envíos separados, para
+        # poder copiar la receta suelta sin arrastrar lo demás.
+        enviados = [c[0][0] for c in update.effective_message.reply_text.call_args_list]
+        self.assertEqual(len(enviados), 3)
+        self.assertIn("análisis del 2026-08-29", enviados[0])
+        self.assertIn("Pollo al horno", enviados[1])
+        self.assertIn("200 g pollo", enviados[1])
+        self.assertNotIn("/hecho", enviados[1])
+        self.assertIn("/hecho", enviados[2])
+
+    @patch("supabase_data.services.get_recent_analyses", return_value=[])
+    @patch("nevera.suggestions.suggest_recipes")
+    @patch("nevera.services.get_items_by_expiry")
+    async def test_comer_una_receta_por_mensaje(self, mock_items, mock_suggest, mock_analyses):
+        mock_items.return_value = [_item_nevera(1, "pollo", "proteina", 700, "g")]
+        mock_suggest.return_value = [
+            {"nombre": f"Receta {n}", "descripcion": "d", "ingredientes": []} for n in (1, 2, 3)
+        ]
+        update, context = _fake_update(chat_id=12)
+        await handlers.comer(update, context)
+
+        enviados = [c[0][0] for c in update.effective_message.reply_text.call_args_list]
+        self.assertEqual(len(enviados), 5)  # cabecera + 3 recetas + pie
+        for n, texto in enumerate(enviados[1:4], start=1):
+            self.assertIn(f"Receta {n}", texto)
+            # Cada mensaje trae una receta y solo una.
+            self.assertNotIn(f"Receta {n + 1}", texto)
 
     async def test_hecho_sin_args(self):
         update, context = _fake_update()
