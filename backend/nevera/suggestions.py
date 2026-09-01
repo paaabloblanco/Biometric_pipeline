@@ -10,9 +10,10 @@ from nevera.units import format_cantidad
 PROMPT_TEMPLATE = (
     "Eres un nutricionista deportivo especializado en nutrición evolutiva, "
     "comida real (whole foods) y dietas antiinflamatorias. Tu cliente es un "
-    "jugador profesional de fútbol sala. Este es el inventario actual de la "
-    "nevera, ordenado priorizando lo que caduca antes (usa los nombres "
-    "EXACTAMENTE como aparecen, no los traduzcas ni los reformules):\n\n"
+    "jugador profesional de fútbol sala. Este es el inventario actual, en dos "
+    "bloques: perecederos (ordenados priorizando lo que caduca antes) y "
+    "despensa (usa los nombres EXACTAMENTE como aparecen, no los traduzcas ni "
+    "los reformules):\n\n"
     "{inventario}\n\n"
     "Este es el último análisis de recuperación guardado (fecha: "
     "{fecha_analisis}; puede no ser de hoy):\n"
@@ -36,11 +37,36 @@ PROMPT_TEMPLATE = (
 
 
 def format_inventario(items) -> str:
-    lineas = []
+    """Parte el inventario en dos bloques: perecederos (lo que hay que gastar)
+    y básicos de despensa (lo que siempre está disponible para condimentar).
+
+    La separación es deliberada: si la sal y las especias aparecen mezcladas
+    con el pollo, Gemini las trata como ingredientes a priorizar por caducidad
+    y propone recetas construidas alrededor de un condimento.
+    """
+    perecederos = []
+    basicos = []
     for item in items:
-        cad = f", caduca {item.fecha_caducidad}" if item.fecha_caducidad else ""
-        lineas.append(f"- {item.nombre}: {format_cantidad(item.cantidad, item.unidad)}{cad}")
-    return "\n".join(lineas)
+        cantidad = format_cantidad(item.cantidad, item.unidad)
+        if item.es_basico:
+            # Sin cantidad: para un básico es un valor testigo, no un dato real.
+            basicos.append(f"- {item.nombre}")
+        else:
+            cad = f", caduca {item.fecha_caducidad}" if item.fecha_caducidad else ""
+            perecederos.append(f"- {item.nombre}: {cantidad}{cad}")
+
+    bloques = []
+    if perecederos:
+        bloques.append(
+            "PERECEDEROS (gástalos primero, ordenados por caducidad):\n" + "\n".join(perecederos)
+        )
+    if basicos:
+        bloques.append(
+            "DESPENSA (siempre disponible, en cantidad suficiente; úsalos para "
+            "condimentar y cocinar, pero NO construyas la receta alrededor de "
+            "ellos ni los priorices por caducidad):\n" + "\n".join(basicos)
+        )
+    return "\n\n".join(bloques)
 
 
 def suggest_recipes(items, ultimo_analisis: dict | None) -> list[dict]:

@@ -39,6 +39,17 @@ _pending_recetas: dict[int, list[dict]] = {}
 
 DIAS_ALERTA_CADUCIDAD = 3
 
+# Valores que se aceptan como booleano en /editar es_basico=...
+_BOOLEANOS = {
+    "si": True,
+    "sí": True,
+    "true": True,
+    "1": True,
+    "no": False,
+    "false": False,
+    "0": False,
+}
+
 HELP_TEXT = (
     "Comandos disponibles:\n\n"
     "/analisis [instrucción] — análisis del último día con Gemini. "
@@ -51,7 +62,7 @@ HELP_TEXT = (
     "/nevera — lista el inventario actual.\n"
     "/borrar <id> — borra un item de la nevera.\n"
     "/editar <id> <campo>=<valor> ... — edita un item "
-    "(campos: cantidad, unidad, categoria, fecha_caducidad, nombre).\n"
+    "(campos: cantidad, unidad, categoria, fecha_caducidad, nombre, es_basico).\n"
     "/comer — sugerencia de qué cocinar con lo que hay en la nevera.\n"
     "/hecho <n> — confirma la receta n de la última sugerencia de /comer "
     "y descuenta sus ingredientes.\n"
@@ -265,7 +276,7 @@ async def editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(args) < 2:
         await update.effective_message.reply_text(
             "Uso: /editar <id> <campo>=<valor> ... "
-            "(campos: cantidad, unidad, categoria, fecha_caducidad, nombre)"
+            "(campos: cantidad, unidad, categoria, fecha_caducidad, nombre, es_basico)"
         )
         return
 
@@ -296,6 +307,14 @@ async def editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cambios["categoria"] = valor.strip()
         elif campo == "nombre":
             cambios["nombre"] = valor.strip()
+        elif campo == "es_basico":
+            texto = valor.strip().lower()
+            if texto not in _BOOLEANOS:
+                await update.effective_message.reply_text(
+                    f"Valor inválido para es_basico: {valor!r} (usa si/no)"
+                )
+                return
+            cambios["es_basico"] = _BOOLEANOS[texto]
         elif campo == "fecha_caducidad":
             if valor.strip().lower() in ("none", "null", "-"):
                 cambios["fecha_caducidad"] = None
@@ -468,6 +487,10 @@ def _formato_resultado_hecho(receta: dict, resultado: dict) -> str:
         else:
             lineas.append(f"• {item['nombre']}: quedan {item['restante']} {item['unidad']}")
 
+    if resultado.get("basicos"):
+        nombres = ", ".join(item["nombre"] for item in resultado["basicos"])
+        lineas.append(f"🧂 Despensa (no se descuenta): {nombres}")
+
     if resultado["no_encontrados"]:
         nombres = ", ".join(c["nombre"] for c in resultado["no_encontrados"])
         lineas.append(f"⚠️ No encontrados en la nevera (no se descontaron): {nombres}")
@@ -480,7 +503,10 @@ def _formato_items(items: list[dict]) -> str:
     for it in items:
         cat = f" [{it['categoria']}]" if it.get("categoria") else ""
         cad = f" (caduca {it['fecha_caducidad']})" if it.get("fecha_caducidad") else ""
-        lineas.append(f"• {it['cantidad']} {it['unidad']} {it['nombre']}{cat}{cad}")
+        # Se muestra en la confirmación de /anadir para que puedas cazar una
+        # mala clasificación de Gemini antes de guardar, no después.
+        basico = " 🧂 despensa" if it.get("es_basico") else ""
+        lineas.append(f"• {it['cantidad']} {it['unidad']} {it['nombre']}{cat}{cad}{basico}")
     return "\n".join(lineas)
 
 
@@ -504,7 +530,8 @@ def _formato_nevera(items) -> str:
                     alerta = " ⚠️ caducado"
             cad = f", caduca {item.fecha_caducidad}" if item.fecha_caducidad else ""
             cantidad = format_cantidad(item.cantidad, item.unidad)
-            lineas.append(f"#{item.id} {item.nombre}: {cantidad}{cad}{alerta}")
+            basico = " 🧂" if item.es_basico else ""
+            lineas.append(f"#{item.id} {item.nombre}: {cantidad}{cad}{alerta}{basico}")
         bloques.append("\n".join(lineas))
     return "\n\n".join(bloques)
 

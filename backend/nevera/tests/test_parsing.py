@@ -19,6 +19,18 @@ class ParseCompraTextTests(unittest.TestCase):
         self.assertEqual(items[0]["unidad"], "l")
         self.assertEqual(items[0]["categoria"], "lacteo")
         self.assertEqual(items[0]["fecha_caducidad"], date(2026, 9, 5))
+        self.assertFalse(items[0]["es_basico"])
+
+    @patch("nevera.parsing.send_prompt_to_gemini")
+    def test_es_basico_se_respeta_y_por_defecto_es_falso(self, mock_send):
+        mock_send.return_value = (
+            '[{"nombre": "sal", "cantidad": 1, "unidad": "ud", "es_basico": true},'
+            ' {"nombre": "pollo", "cantidad": 500, "unidad": "g"}]'
+        )
+        sal, pollo = parse_compra_text("sal, 500g pollo")
+        self.assertTrue(sal["es_basico"])
+        # Ausente en la respuesta -> perecedero: es el lado seguro.
+        self.assertFalse(pollo["es_basico"])
 
     @patch("nevera.parsing.send_prompt_to_gemini")
     def test_json_con_fences_markdown(self, mock_send):

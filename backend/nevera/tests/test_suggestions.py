@@ -2,12 +2,18 @@ import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-from nevera.suggestions import suggest_recipes
+from nevera.suggestions import format_inventario, suggest_recipes
 
 
-def _item(nombre, cantidad, unidad, fecha_caducidad=None):
+def _item(nombre, cantidad, unidad, fecha_caducidad=None, es_basico=False):
+    # `es_basico` se pasa explícito: un MagicMock devuelve un atributo truthy
+    # para lo que no se le declara, y todo el inventario acabaría en despensa.
     return MagicMock(
-        nombre=nombre, cantidad=cantidad, unidad=unidad, fecha_caducidad=fecha_caducidad
+        nombre=nombre,
+        cantidad=cantidad,
+        unidad=unidad,
+        fecha_caducidad=fecha_caducidad,
+        es_basico=es_basico,
     )
 
 
@@ -78,6 +84,30 @@ class SuggestRecipesTests(unittest.TestCase):
         mock_send.return_value = '[{"nombre": "x", "ingredientes": [{"cantidad": 1}]}]'
         with self.assertRaises(ValueError):
             suggest_recipes([_item("pollo", 1, "ud")], None)
+
+
+class FormatInventarioTests(unittest.TestCase):
+    def test_separa_perecederos_de_despensa(self):
+        texto = format_inventario(
+            [
+                _item("pollo", 500, "g", fecha_caducidad=date(2026, 9, 3)),
+                _item("sal", 1, "ud", es_basico=True),
+            ]
+        )
+
+        self.assertIn("PERECEDEROS", texto)
+        self.assertIn("- pollo: 500 g, caduca 2026-09-03", texto)
+        self.assertIn("DESPENSA", texto)
+        # El básico aparece (hace falta para cocinar) pero sin cantidad ni
+        # caducidad: su cantidad es un valor testigo, no un dato real.
+        self.assertIn("- sal", texto)
+        self.assertNotIn("sal: 1 ud", texto)
+        self.assertLess(texto.index("PERECEDEROS"), texto.index("DESPENSA"))
+
+    def test_sin_basicos_no_pone_bloque_de_despensa(self):
+        texto = format_inventario([_item("pollo", 500, "g")])
+        self.assertIn("PERECEDEROS", texto)
+        self.assertNotIn("DESPENSA", texto)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,15 @@ PROMPT_TEMPLATE = (
     '- "cantidad": número\n'
     '- "unidad": uno de "g", "kg", "ml", "l", "ud"\n'
     '- "categoria": uno de "proteina", "lacteo", "verdura", "fruta", "cereal", "otros"\n'
-    '- "fecha_caducidad": string en formato YYYY-MM-DD, o null si no se menciona\n\n'
+    '- "fecha_caducidad": string en formato YYYY-MM-DD, o null si no se menciona\n'
+    '- "es_basico": true o false\n\n'
+    'Marca "es_basico": true en los básicos de despensa: sal, especias y '
+    "hierbas, aceites, vinagres, salsas y condimentos envasados (soja, "
+    "mostaza, miel, mayonesa, pesto). Son productos que duran meses y se usan "
+    'en cantidades pequeñas que no se pesan. Marca "es_basico": false en todo '
+    "lo que se compra para consumir en días o semanas: carne, pescado, "
+    "lácteos, fruta, verdura, pan, pasta y conservas que son el plato "
+    "principal (por ejemplo el atún en lata).\n\n"
     "Si un producto no indica cantidad, asume 1 ud. Agrupa duplicados evidentes "
     "del mismo texto en un único objeto sumando cantidades.\n\n"
     "Texto de la compra:\n"
@@ -28,7 +36,7 @@ def parse_compra_text(texto: str) -> list[dict]:
     """Llama a Gemini para estructurar `texto` en una lista de items normalizados.
 
     Cada item devuelto: {"nombre": str, "cantidad": float, "unidad": str,
-    "categoria": str | None, "fecha_caducidad": date | None}.
+    "categoria": str | None, "fecha_caducidad": date | None, "es_basico": bool}.
 
     Lanza ValueError si Gemini no devuelve JSON válido o no es una lista.
     """
@@ -73,4 +81,7 @@ def _normalizar_item(item: dict) -> dict:
         "unidad": item["unidad"],
         "categoria": item.get("categoria"),
         "fecha_caducidad": fecha,
+        # Ante la duda, perecedero: es el lado seguro. Un perecedero marcado
+        # como básico por error dejaría de descontarse y de avisar de caducidad.
+        "es_basico": bool(item.get("es_basico", False)),
     }

@@ -28,7 +28,8 @@ def add_items(items: list[dict], origen: str = "manual"):
     """Da de alta o suma cantidad a items existentes (mismo nombre normalizado + unidad).
 
     Cada item: {"nombre": str, "cantidad": float, "unidad": str,
-                "categoria": str | None, "fecha_caducidad": date | None}
+                "categoria": str | None, "fecha_caducidad": date | None,
+                "es_basico": bool}
     Devuelve la lista de NeveraItem resultantes.
     """
     ensure_django_setup()
@@ -45,6 +46,10 @@ def add_items(items: list[dict], origen: str = "manual"):
                 existente.fecha_caducidad = item["fecha_caducidad"]
             if item.get("categoria"):
                 existente.categoria = item["categoria"]
+            # Solo promociona a básico, nunca degrada: si ya lo marcaste tú a
+            # mano, una compra posterior mal clasificada no debe deshacerlo.
+            if item.get("es_basico"):
+                existente.es_basico = True
             existente.save()
             resultado.append(existente)
         else:
@@ -55,16 +60,23 @@ def add_items(items: list[dict], origen: str = "manual"):
                 categoria=item.get("categoria"),
                 fecha_caducidad=item.get("fecha_caducidad"),
                 origen=origen,
+                es_basico=bool(item.get("es_basico", False)),
             )
             resultado.append(nuevo)
     return resultado
 
 
 def get_items_by_expiry(dias_limite: int | None = None):
-    """Devuelve items ordenados por caducidad (los que no tienen fecha van al final).
+    """Devuelve items ordenados por urgencia de consumo.
 
-    Si `dias_limite` se indica, solo incluye los que caducan dentro de ese
-    número de días (excluye los que no tienen fecha, ver decisión D del SDD).
+    Orden: primero los perecederos con fecha (los que antes caducan), luego
+    los perecederos sin fecha anotada, y al final los básicos de despensa
+    (ver decisión D del SDD y `NeveraItem.es_basico`). Los básicos siguen
+    apareciendo —hacen falta para cocinar— pero nunca encabezan la lista.
+
+    Si `dias_limite` se indica, solo incluye perecederos que caduquen dentro
+    de ese número de días: los básicos quedan fuera por definición, igual que
+    los que no tienen fecha.
     """
     ensure_django_setup()
     from nevera.models import NeveraItem
@@ -72,32 +84,50 @@ def get_items_by_expiry(dias_limite: int | None = None):
     qs = NeveraItem.objects.all()
     if dias_limite is not None:
         limite = timezone.localtime().date() + timedelta(days=dias_limite)
-        qs = qs.filter(fecha_caducidad__isnull=False, fecha_caducidad__lte=limite)
+        qs = qs.filter(es_basico=False, fecha_caducidad__isnull=False, fecha_caducidad__lte=limite)
         return list(qs.order_by("fecha_caducidad"))
 
-    con_fecha = list(qs.filter(fecha_caducidad__isnull=False).order_by("fecha_caducidad"))
-    sin_fecha = list(qs.filter(fecha_caducidad__isnull=True).order_by("nombre"))
-    return con_fecha + sin_fecha
+    perecederos = qs.filter(es_basico=False)
+    con_fecha = list(perecederos.filter(fecha_caducidad__isnull=False).order_by("fecha_caducidad"))
+    sin_fecha = list(perecederos.filter(fecha_caducidad__isnull=True).order_by("nombre"))
+    basicos = list(qs.filter(es_basico=True).order_by("nombre"))
+    return con_fecha + sin_fecha + basicos
 
 
 def consume_items(consumos: list[dict]):
     """Resta cantidades del inventario.
 
     Cada consumo: {"nombre": str, "unidad": str, "cantidad": float}.
-    Si la cantidad restante es <= 0, el item se elimina. Devuelve un resumen
-    de lo aplicado y lo que no se pudo encontrar.
+    Si la cantidad restante es <= 0, el item se elimina.
+
+    Los básicos de despensa (`es_basico=True`) se gestionan por presencia, no
+    por cantidad: se ignoran aquí y se devuelven aparte en "basicos". Sin esto,
+    una receta con "sal: 1 ud" borraría la sal del inventario.
+
+    Devuelve {"aplicados", "basicos", "no_encontrados"}.
     """
     ensure_django_setup()
     from nevera.models import NeveraItem
 
     aplicados = []
+    basicos = []
     no_encontrados = []
     for consumo in consumos:
         nombre = normalizar_nombre(consumo["nombre"])
         cantidad, unidad = to_base(consumo["cantidad"], consumo["unidad"])
         item = NeveraItem.objects.filter(nombre=nombre, unidad=unidad).first()
-        if not item:
-            no_encontrados.append(consumo)
+        if item is None:
+            # Para un básico la unidad de la receta casi nunca coincide con la
+            # guardada: la sal está como "1 ud" y Gemini pide "3 g". Como no se
+            # va a descontar nada, la unidad da igual — basta con reconocerlo
+            # por nombre y evitar un "no encontrado" que asustaría sin motivo.
+            item = NeveraItem.objects.filter(nombre=nombre, es_basico=True).first()
+            if item is None:
+                no_encontrados.append(consumo)
+                continue
+
+        if item.es_basico:
+            basicos.append({"nombre": nombre, "unidad": item.unidad})
             continue
 
         item.cantidad -= cantidad
@@ -108,7 +138,7 @@ def consume_items(consumos: list[dict]):
             item.save()
             aplicados.append({"nombre": nombre, "unidad": unidad, "restante": float(item.cantidad)})
 
-    return {"aplicados": aplicados, "no_encontrados": no_encontrados}
+    return {"aplicados": aplicados, "basicos": basicos, "no_encontrados": no_encontrados}
 
 
 def list_all():
@@ -129,7 +159,7 @@ def delete_item(item_id: int) -> bool:
 
 def edit_item(item_id: int, **cambios):
     """Edita campos de un item existente (nombre, cantidad, unidad, categoria,
-    fecha_caducidad). `cantidad`/`unidad` se normalizan igual que en add_items
+    fecha_caducidad, es_basico). `cantidad`/`unidad` se normalizan igual que en add_items
     si se pasan juntas; si solo se pasa `cantidad` se asume que ya está en la
     unidad base actual del item. Devuelve el item actualizado o None si no existe.
     """
@@ -150,6 +180,8 @@ def edit_item(item_id: int, **cambios):
         item.categoria = cambios["categoria"]
     if "fecha_caducidad" in cambios:
         item.fecha_caducidad = cambios["fecha_caducidad"]
+    if "es_basico" in cambios:
+        item.es_basico = bool(cambios["es_basico"])
 
     item.save()
     return item
