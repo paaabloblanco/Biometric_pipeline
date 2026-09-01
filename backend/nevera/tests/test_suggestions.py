@@ -46,6 +46,23 @@ class SuggestRecipesTests(unittest.TestCase):
         self.assertIn("comida real", prompt_usado)
 
     @patch("nevera.suggestions.send_prompt_to_gemini")
+    def test_prompt_acota_raciones_y_equipamiento(self, mock_send):
+        """Sin esto Gemini vacía el stock en un plato (5 plátanos en una
+        frittata) y propone recetas al horno que no se pueden cocinar."""
+        mock_send.return_value = (
+            '[{"nombre": "x", "descripcion": "d", "ingredientes": '
+            '[{"nombre": "pollo", "cantidad": 150, "unidad": "g"}]}]'
+        )
+        suggest_recipes([_item("pollo", 700, "g")], None)
+        prompt_usado = mock_send.call_args[0][0]
+
+        self.assertIn("UNA sola persona y UNA sola comida", prompt_usado)
+        self.assertIn("STOCK TOTAL disponible", prompt_usado)
+        self.assertIn("microondas, sartén y olla", prompt_usado)
+        self.assertIn("NO tiene horno", prompt_usado)
+        self.assertIn("MISMA unidad", prompt_usado)
+
+    @patch("nevera.suggestions.send_prompt_to_gemini")
     def test_sin_analisis_previo_usa_texto_por_defecto(self, mock_send):
         mock_send.return_value = '[{"nombre": "x", "descripcion": "d", "ingredientes": [{"nombre": "pollo", "cantidad": 1, "unidad": "ud"}]}]'
         suggest_recipes([_item("pollo", 1, "ud")], None)

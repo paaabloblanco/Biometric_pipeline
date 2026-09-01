@@ -7,6 +7,10 @@ import re
 from health_ai.pruebas import send_prompt_to_gemini
 from nevera.units import format_cantidad
 
+# Equipamiento de cocina disponible. Va en el prompt porque sin esto Gemini
+# propone gratinados, asados o cremas batidas que no se pueden ejecutar.
+EQUIPAMIENTO = "microondas, sartén y olla"
+
 PROMPT_TEMPLATE = (
     "Eres un nutricionista deportivo especializado en nutrición evolutiva, "
     "comida real (whole foods) y dietas antiinflamatorias. Tu cliente es un "
@@ -18,6 +22,25 @@ PROMPT_TEMPLATE = (
     "Este es el último análisis de recuperación guardado (fecha: "
     "{fecha_analisis}; puede no ser de hoy):\n"
     "{analisis}\n\n"
+    "RESTRICCIONES OBLIGATORIAS:\n\n"
+    "1. RACIONES: cada receta es para UNA sola persona y UNA sola comida. Las "
+    "cantidades del inventario son el STOCK TOTAL disponible, NO la cantidad "
+    "que hay que usar. No vacíes el stock en un plato: un paquete de 300 g de "
+    "pasta son 3 raciones, no una. Usa raciones realistas de una comida "
+    "(orientación: 80-120 g de pasta o arroz en seco, 150-200 g de proteína, "
+    "1 aguacate, 1-2 huevos por persona en un plato de acompañamiento, 50-80 g "
+    "de cebolla, 1-2 piezas de fruta). Nunca pidas más cantidad de la que hay "
+    "en el inventario.\n\n"
+    "2. EQUIPAMIENTO: solo dispone de " + EQUIPAMIENTO + ". NO tiene horno, "
+    "grill, batidora, robot de cocina ni freidora de aire. Toda receta debe "
+    "poder hacerse únicamente con eso: nada de gratinar, hornear, asar al "
+    "horno, triturar ni batir. Una tortilla o frittata debe hacerse a la "
+    "sartén, cuajada por ambos lados.\n\n"
+    "3. UNIDADES: expresa cada ingrediente en la MISMA unidad con la que "
+    "aparece en el inventario. Si algo figura en 'ud', pídelo en 'ud'. Y "
+    "cuando la unidad sea 'ud' y el producto no se fraccione de forma natural "
+    "(huevos, latas, lonchas, piezas de fruta), usa números ENTEROS: pide "
+    "1 loncha de queso, nunca 0,25.\n\n"
     "Propón entre 1 y 3 recetas que respeten estrictamente la filosofía de "
     "comida real y principios antiinflamatorios, y que se puedan hacer "
     "principalmente con lo que hay en el inventario. Prioriza usar primero "
@@ -26,7 +49,9 @@ PROMPT_TEMPLATE = (
     "sala (por ejemplo, asegurando proteínas de alta calidad y una recarga "
     "óptima de glucógeno con carbohidratos naturales si hay fatiga o "
     "entrenamientos intensos, o platos más ligeros enfocados en "
-    "micronutrientes si hay estrés elevado).\n\n"
+    "micronutrientes si hay estrés elevado). Recuerda que puede sobrar comida "
+    "en la nevera para otras comidas: es lo normal, no un problema a "
+    "resolver.\n\n"
     "Usa solo ingredientes que aparezcan en el inventario. Responde solo con "
     "JSON estricto, sin explicaciones ni bloques de código markdown, con "
     "este formato exacto:\n"
