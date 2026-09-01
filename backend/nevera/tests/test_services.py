@@ -180,6 +180,47 @@ class NeveraServicesTests(unittest.TestCase):
         self.assertEqual(resultado["basicos"], [])
         self.assertEqual(len(resultado["no_encontrados"]), 1)
 
+    def test_excluir_por_nombre_casa_por_contenido(self):
+        """Quien escribe "sin pollo" no teclea "pollo deshuesado y sin piel"."""
+        items = services.add_items(
+            [
+                {
+                    "nombre": f"{PREFIJO} pollo deshuesado y sin piel",
+                    "cantidad": 700,
+                    "unidad": "g",
+                },
+                {"nombre": f"{PREFIJO} huevos", "cantidad": 4, "unidad": "ud"},
+            ]
+        )
+
+        restantes, excluidos, sin_coincidencia = services.excluir_por_nombre(items, ["POLLO"])
+
+        self.assertEqual([i.nombre for i in restantes], [f"{PREFIJO} huevos"])
+        self.assertEqual([i.nombre for i in excluidos], [f"{PREFIJO} pollo deshuesado y sin piel"])
+        self.assertEqual(sin_coincidencia, [])
+
+    def test_excluir_por_nombre_avisa_de_terminos_sin_coincidencia(self):
+        items = services.add_items([{"nombre": f"{PREFIJO} huevos", "cantidad": 4, "unidad": "ud"}])
+
+        restantes, excluidos, sin_coincidencia = services.excluir_por_nombre(
+            items, ["huevos", "polllo"]
+        )
+
+        self.assertEqual(restantes, [])
+        self.assertEqual(len(excluidos), 1)
+        # La errata se reporta: si se ignorara, la receta podría traer pollo.
+        self.assertEqual(sin_coincidencia, ["polllo"])
+
+    def test_excluir_por_nombre_ignora_acentos_y_mayusculas(self):
+        items = services.add_items(
+            [{"nombre": f"{PREFIJO} platanos", "cantidad": 5, "unidad": "ud"}]
+        )
+
+        restantes, excluidos, _ = services.excluir_por_nombre(items, ["Plátanos"])
+
+        self.assertEqual(restantes, [])
+        self.assertEqual(len(excluidos), 1)
+
     def test_get_items_by_expiry_relega_basicos_al_final(self):
         hoy = date.today()
         services.add_items(

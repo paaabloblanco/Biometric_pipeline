@@ -204,6 +204,27 @@ class NeveraListTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("1 L", texto)
 
 
+class ParseExclusionesTests(unittest.TestCase):
+    def test_sin_argumentos_no_excluye_nada(self):
+        self.assertEqual(handlers._parse_exclusiones([]), [])
+
+    def test_solo_actua_con_la_palabra_sin(self):
+        self.assertEqual(handlers._parse_exclusiones(["pollo"]), [])
+
+    def test_un_termino(self):
+        self.assertEqual(handlers._parse_exclusiones(["sin", "pollo"]), ["pollo"])
+
+    def test_varios_terminos_separados_por_coma(self):
+        self.assertEqual(
+            handlers._parse_exclusiones(["sin", "pollo,", "huevos"]), ["pollo", "huevos"]
+        )
+
+    def test_termino_de_varias_palabras_no_se_parte(self):
+        self.assertEqual(
+            handlers._parse_exclusiones(["sin", "salmon", "ahumado"]), ["salmon ahumado"]
+        )
+
+
 class FormatoNeveraTests(unittest.TestCase):
     def test_agrupa_por_categoria_y_alerta_caducidad_proxima(self):
         proximo = _item_nevera(1, "yogur", "lacteo", 4, "ud", fecha_caducidad=date.today())

@@ -94,6 +94,34 @@ def get_items_by_expiry(dias_limite: int | None = None):
     return con_fecha + sin_fecha + basicos
 
 
+def excluir_por_nombre(items, terminos: list[str]):
+    """Quita del inventario los items que casen con alguno de los términos.
+
+    El match es por *contenido* del nombre normalizado, no exacto: quien pide
+    "sin pollo" no va a escribir "pollo deshuesado y sin piel". Es la misma
+    tolerancia que ya se aplica al parsear una compra.
+
+    Devuelve (restantes, excluidos, terminos_sin_coincidencia). El tercero
+    importa: si escribes mal un término y lo descartáramos en silencio, la
+    receta llegaría con el ingrediente que querías evitar.
+    """
+    normalizados = [normalizar_nombre(t) for t in terminos if t.strip()]
+
+    restantes = []
+    excluidos = []
+    usados = set()
+    for item in items:
+        casa = [t for t in normalizados if t in item.nombre]
+        if casa:
+            excluidos.append(item)
+            usados.update(casa)
+        else:
+            restantes.append(item)
+
+    sin_coincidencia = [t for t in normalizados if t not in usados]
+    return restantes, excluidos, sin_coincidencia
+
+
 def consume_items(consumos: list[dict]):
     """Resta cantidades del inventario.
 

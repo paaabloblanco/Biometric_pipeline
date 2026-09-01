@@ -63,7 +63,8 @@ HELP_TEXT = (
     "/borrar <id> — borra un item de la nevera.\n"
     "/editar <id> <campo>=<valor> ... — edita un item "
     "(campos: cantidad, unidad, categoria, fecha_caducidad, nombre, es_basico).\n"
-    "/comer — sugerencia de qué cocinar con lo que hay en la nevera.\n"
+    "/comer [sin <ingredientes>] — sugerencia de qué cocinar con lo que hay "
+    "en la nevera. Ej: /comer sin pollo, huevos\n"
     "/hecho <n> — confirma la receta n de la última sugerencia de /comer "
     "y descuenta sus ingredientes.\n"
     "/comprar <texto de la gazetka> — dice qué ofertas merece la pena "
@@ -351,9 +352,11 @@ async def comer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await update.effective_chat.send_action(ChatAction.TYPING)
 
-    from nevera.services import get_items_by_expiry
+    from nevera.services import excluir_por_nombre, get_items_by_expiry
     from nevera.suggestions import suggest_recipes
     from supabase_data.services import get_recent_analyses
+
+    terminos = _parse_exclusiones(_args(context))
 
     try:
         items = await asyncio.to_thread(get_items_by_expiry)
@@ -362,6 +365,22 @@ async def comer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "La nevera está vacía. Usa /anadir para dar de alta la compra."
             )
             return
+
+        avisos = []
+        if terminos:
+            items, excluidos, sin_coincidencia = excluir_por_nombre(items, terminos)
+            if excluidos:
+                avisos.append("Sin: " + ", ".join(i.nombre for i in excluidos))
+            # Un término que no casa con nada suele ser una errata. Se avisa en
+            # vez de ignorarlo: si no, la receta llegaría con el ingrediente
+            # que querías evitar y parecería que el bot no te ha hecho caso.
+            if sin_coincidencia:
+                avisos.append("⚠️ No encontré en la nevera: " + ", ".join(sin_coincidencia))
+            if not items:
+                await update.effective_message.reply_text(
+                    "Al excluir eso no queda nada en la nevera."
+                )
+                return
 
         analyses = await asyncio.to_thread(get_recent_analyses, 1)
         ultimo_analisis = analyses[0] if analyses else None
@@ -373,7 +392,21 @@ async def comer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     _pending_recetas[chat_id] = recetas
-    await _reply_long(update, _formato_recetas(recetas, ultimo_analisis))
+    texto = _formato_recetas(recetas, ultimo_analisis)
+    if avisos:
+        texto = "\n".join(avisos) + "\n\n" + texto
+    await _reply_long(update, texto)
+
+
+def _parse_exclusiones(args: list[str]) -> list[str]:
+    """Saca los términos de `/comer sin pollo, huevos`.
+
+    Se separa por comas, no por espacios, para que "sin salmon ahumado" sea un
+    único término de dos palabras y no dos términos sueltos.
+    """
+    if not args or args[0].lower() != "sin":
+        return []
+    return [t.strip() for t in " ".join(args[1:]).split(",") if t.strip()]
 
 
 @restricted
