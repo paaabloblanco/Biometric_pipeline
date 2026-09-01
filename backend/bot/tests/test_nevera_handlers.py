@@ -5,6 +5,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bot import handlers
 
 
+def _item_nevera(id, nombre, categoria, cantidad, unidad, fecha_caducidad=None, es_basico=False):
+    """Falso NeveraItem para los formateadores.
+
+    `es_basico` se declara siempre: un MagicMock devuelve un atributo truthy
+    para lo que no se le pasa, y todo el inventario acabaría en la despensa.
+    """
+    return MagicMock(
+        id=id,
+        nombre=nombre,
+        categoria=categoria,
+        cantidad=cantidad,
+        unidad=unidad,
+        fecha_caducidad=fecha_caducidad,
+        es_basico=es_basico,
+    )
+
+
 def _fake_update(chat_id=1, args=None):
     update = MagicMock()
     update.effective_chat.id = chat_id
@@ -178,15 +195,7 @@ class NeveraListTests(unittest.IsolatedAsyncioTestCase):
 
     @patch("nevera.services.list_all")
     async def test_nevera_con_items(self, mock_list):
-        item = MagicMock(
-            id=1,
-            nombre="leche",
-            categoria="lacteo",
-            cantidad=1000,
-            unidad="ml",
-            fecha_caducidad=None,
-        )
-        mock_list.return_value = [item]
+        mock_list.return_value = [_item_nevera(1, "leche", "lacteo", 1000, "ml")]
         update, context = _fake_update()
         await handlers.nevera_cmd(update, context)
         texto = update.effective_message.reply_text.call_args[0][0]
@@ -197,26 +206,33 @@ class NeveraListTests(unittest.IsolatedAsyncioTestCase):
 
 class FormatoNeveraTests(unittest.TestCase):
     def test_agrupa_por_categoria_y_alerta_caducidad_proxima(self):
-        proximo = MagicMock(
-            id=1,
-            nombre="yogur",
-            categoria="lacteo",
-            cantidad=4,
-            unidad="ud",
-            fecha_caducidad=date.today(),
-        )
-        lejano = MagicMock(
-            id=2,
-            nombre="arroz",
-            categoria="cereal",
-            cantidad=1000,
-            unidad="g",
-            fecha_caducidad=date(2027, 1, 1),
-        )
+        proximo = _item_nevera(1, "yogur", "lacteo", 4, "ud", fecha_caducidad=date.today())
+        lejano = _item_nevera(2, "arroz", "cereal", 1000, "g", fecha_caducidad=date(2027, 1, 1))
+
         texto = handlers._formato_nevera([proximo, lejano])
         self.assertIn("caduca pronto", texto)
         self.assertNotIn("arroz ⚠️", texto)
         self.assertIn("1 kg", texto)
+
+    def test_despensa_se_colapsa_en_una_linea(self):
+        pollo = _item_nevera(1, "pollo", "proteina", 700, "g")
+        sal = _item_nevera(2, "sal", "otros", 1, "ud", es_basico=True)
+        curcuma = _item_nevera(3, "curcuma", "otros", 1, "ud", es_basico=True)
+
+        texto = handlers._formato_nevera([pollo, sal, curcuma])
+
+        # El perecedero conserva id y cantidad: es sobre lo que se decide.
+        self.assertIn("#1 pollo: 700 g", texto)
+        # Los básicos se nombran, pero sin id, cantidad ni línea propia.
+        self.assertIn("🧂 *Despensa* (2): curcuma, sal", texto)
+        self.assertNotIn("#2", texto)
+        self.assertNotIn("#3", texto)
+        # Y no arrastran su categoría al listado de arriba.
+        self.assertNotIn("*otros*", texto)
+
+    def test_sin_basicos_no_hay_linea_de_despensa(self):
+        texto = handlers._formato_nevera([_item_nevera(1, "pollo", "proteina", 700, "g")])
+        self.assertNotIn("Despensa", texto)
 
 
 class ComerHechoTests(unittest.IsolatedAsyncioTestCase):

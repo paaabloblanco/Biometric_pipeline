@@ -511,11 +511,22 @@ def _formato_items(items: list[dict]) -> str:
 
 
 def _formato_nevera(items) -> str:
+    """Detalla los perecederos y colapsa la despensa en una sola línea.
+
+    Sobre los básicos no se decide nada (ni se gastan por caducidad ni se
+    descuentan), así que listarlos enteros solo entierra lo único accionable:
+    qué hay que gastar y cuándo. Se resumen, pero se siguen nombrando para
+    poder ver de un vistazo si falta alguno.
+    """
     from nevera.units import format_cantidad
 
     hoy = timezone.localtime().date()
     grupos: dict[str, list] = {}
+    basicos = []
     for item in items:
+        if item.es_basico:
+            basicos.append(item)
+            continue
         clave = item.categoria or "sin categoría"
         grupos.setdefault(clave, []).append(item)
 
@@ -530,9 +541,13 @@ def _formato_nevera(items) -> str:
                     alerta = " ⚠️ caducado"
             cad = f", caduca {item.fecha_caducidad}" if item.fecha_caducidad else ""
             cantidad = format_cantidad(item.cantidad, item.unidad)
-            basico = " 🧂" if item.es_basico else ""
-            lineas.append(f"#{item.id} {item.nombre}: {cantidad}{cad}{alerta}{basico}")
+            lineas.append(f"#{item.id} {item.nombre}: {cantidad}{cad}{alerta}")
         bloques.append("\n".join(lineas))
+
+    if basicos:
+        nombres = ", ".join(item.nombre for item in sorted(basicos, key=lambda i: i.nombre))
+        bloques.append(f"🧂 *Despensa* ({len(basicos)}): {nombres}")
+
     return "\n\n".join(bloques)
 
 
