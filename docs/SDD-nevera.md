@@ -238,6 +238,27 @@ Playwright/Selenium contra `blix.pl` — queda fuera de esta iteración.
   (confirmación sí/no antes de guardar) y se añaden `/borrar` y `/editar`
   como comandos de la fase 2, para corregir un item después de confirmado sin
   tocar la base a mano. _(resuelto 2026-08-29)_
+- **H. Básicos de despensa**: nuevo campo `NeveraItem.es_basico`, que
+  **refina la decisión D**. Esta reservaba `fecha_caducidad = NULL` para todo
+  lo que no tuviera fecha, pero el NULL quedaba semánticamente sobrecargado:
+  valía a la vez para "no caduca en la práctica" (sal, especias, aceite) y
+  para "es perecedero pero no anoté la fecha" (el pollo). Con el campo
+  explícito, el NULL recupera un único significado y el discriminador queda
+  separado de `categoria`, que es taxonomía nutricional y sí se usa para
+  razonar en los prompts.
+
+  Un básico se gestiona **por presencia** (hay / no hay), no por cantidad —
+  su `cantidad` es un valor testigo. En consecuencia: queda fuera del ranking
+  de urgencia, `consume_items` no le descuenta nada, aparece en un bloque
+  `DESPENSA` aparte del prompt de `/comer` y solo sale del inventario al
+  borrarlo a mano. Esto cierra un fallo real: una receta con "sal: 1 ud"
+  llegaba a `consume_items`, dejaba la cantidad en 0 y **borraba la sal**.
+
+  Trade-off aceptado: el stock de básicos deja de ser automático y pasa a ser
+  declarativo (si se acaba el aceite, hay que decirlo). A cambio no hay que
+  pesar la cúrcuma. La alternativa de recuento periódico (*cycle counting*)
+  es sobreingeniería para un pipeline personal.
+  _(resuelto 2026-09-01, implementado en la misma fecha)_
 
 ## 8. Plan de implementación (por fases)
 

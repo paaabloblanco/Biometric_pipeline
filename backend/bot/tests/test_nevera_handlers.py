@@ -5,6 +5,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bot import handlers
 
 
+def _item_nevera(id, nombre, categoria, cantidad, unidad, fecha_caducidad=None, es_basico=False):
+    """Falso NeveraItem para los formateadores.
+
+    `es_basico` se declara siempre: un MagicMock devuelve un atributo truthy
+    para lo que no se le pasa, y todo el inventario acabaría en la despensa.
+    """
+    return MagicMock(
+        id=id,
+        nombre=nombre,
+        categoria=categoria,
+        cantidad=cantidad,
+        unidad=unidad,
+        fecha_caducidad=fecha_caducidad,
+        es_basico=es_basico,
+    )
+
+
 def _fake_update(chat_id=1, args=None):
     update = MagicMock()
     update.effective_chat.id = chat_id
@@ -178,15 +195,7 @@ class NeveraListTests(unittest.IsolatedAsyncioTestCase):
 
     @patch("nevera.services.list_all")
     async def test_nevera_con_items(self, mock_list):
-        item = MagicMock(
-            id=1,
-            nombre="leche",
-            categoria="lacteo",
-            cantidad=1000,
-            unidad="ml",
-            fecha_caducidad=None,
-        )
-        mock_list.return_value = [item]
+        mock_list.return_value = [_item_nevera(1, "leche", "lacteo", 1000, "ml")]
         update, context = _fake_update()
         await handlers.nevera_cmd(update, context)
         texto = update.effective_message.reply_text.call_args[0][0]
@@ -195,28 +204,56 @@ class NeveraListTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("1 L", texto)
 
 
+class ParseExclusionesTests(unittest.TestCase):
+    def test_sin_argumentos_no_excluye_nada(self):
+        self.assertEqual(handlers._parse_exclusiones([]), [])
+
+    def test_solo_actua_con_la_palabra_sin(self):
+        self.assertEqual(handlers._parse_exclusiones(["pollo"]), [])
+
+    def test_un_termino(self):
+        self.assertEqual(handlers._parse_exclusiones(["sin", "pollo"]), ["pollo"])
+
+    def test_varios_terminos_separados_por_coma(self):
+        self.assertEqual(
+            handlers._parse_exclusiones(["sin", "pollo,", "huevos"]), ["pollo", "huevos"]
+        )
+
+    def test_termino_de_varias_palabras_no_se_parte(self):
+        self.assertEqual(
+            handlers._parse_exclusiones(["sin", "salmon", "ahumado"]), ["salmon ahumado"]
+        )
+
+
 class FormatoNeveraTests(unittest.TestCase):
     def test_agrupa_por_categoria_y_alerta_caducidad_proxima(self):
-        proximo = MagicMock(
-            id=1,
-            nombre="yogur",
-            categoria="lacteo",
-            cantidad=4,
-            unidad="ud",
-            fecha_caducidad=date.today(),
-        )
-        lejano = MagicMock(
-            id=2,
-            nombre="arroz",
-            categoria="cereal",
-            cantidad=1000,
-            unidad="g",
-            fecha_caducidad=date(2027, 1, 1),
-        )
+        proximo = _item_nevera(1, "yogur", "lacteo", 4, "ud", fecha_caducidad=date.today())
+        lejano = _item_nevera(2, "arroz", "cereal", 1000, "g", fecha_caducidad=date(2027, 1, 1))
+
         texto = handlers._formato_nevera([proximo, lejano])
         self.assertIn("caduca pronto", texto)
         self.assertNotIn("arroz ⚠️", texto)
         self.assertIn("1 kg", texto)
+
+    def test_despensa_se_colapsa_en_una_linea(self):
+        pollo = _item_nevera(1, "pollo", "proteina", 700, "g")
+        sal = _item_nevera(2, "sal", "otros", 1, "ud", es_basico=True)
+        curcuma = _item_nevera(3, "curcuma", "otros", 1, "ud", es_basico=True)
+
+        texto = handlers._formato_nevera([pollo, sal, curcuma])
+
+        # El perecedero conserva id y cantidad: es sobre lo que se decide.
+        self.assertIn("#1 pollo: 700 g", texto)
+        # Los básicos se nombran, pero sin id, cantidad ni línea propia.
+        self.assertIn("🧂 *Despensa* (2): curcuma, sal", texto)
+        self.assertNotIn("#2", texto)
+        self.assertNotIn("#3", texto)
+        # Y no arrastran su categoría al listado de arriba.
+        self.assertNotIn("*otros*", texto)
+
+    def test_sin_basicos_no_hay_linea_de_despensa(self):
+        texto = handlers._formato_nevera([_item_nevera(1, "pollo", "proteina", 700, "g")])
+        self.assertNotIn("Despensa", texto)
 
 
 class ComerHechoTests(unittest.IsolatedAsyncioTestCase):
@@ -253,9 +290,34 @@ class ComerHechoTests(unittest.IsolatedAsyncioTestCase):
         await handlers.comer(update, context)
 
         self.assertIn(11, handlers._pending_recetas)
-        texto = update.effective_message.reply_text.call_args_list[0][0][0]
-        self.assertIn("Pollo al horno", texto)
-        self.assertIn("/hecho", texto)
+
+        # Cabecera, una receta por mensaje y pie: tres envíos separados, para
+        # poder copiar la receta suelta sin arrastrar lo demás.
+        enviados = [c[0][0] for c in update.effective_message.reply_text.call_args_list]
+        self.assertEqual(len(enviados), 3)
+        self.assertIn("análisis del 2026-08-29", enviados[0])
+        self.assertIn("Pollo al horno", enviados[1])
+        self.assertIn("200 g pollo", enviados[1])
+        self.assertNotIn("/hecho", enviados[1])
+        self.assertIn("/hecho", enviados[2])
+
+    @patch("supabase_data.services.get_recent_analyses", return_value=[])
+    @patch("nevera.suggestions.suggest_recipes")
+    @patch("nevera.services.get_items_by_expiry")
+    async def test_comer_una_receta_por_mensaje(self, mock_items, mock_suggest, mock_analyses):
+        mock_items.return_value = [_item_nevera(1, "pollo", "proteina", 700, "g")]
+        mock_suggest.return_value = [
+            {"nombre": f"Receta {n}", "descripcion": "d", "ingredientes": []} for n in (1, 2, 3)
+        ]
+        update, context = _fake_update(chat_id=12)
+        await handlers.comer(update, context)
+
+        enviados = [c[0][0] for c in update.effective_message.reply_text.call_args_list]
+        self.assertEqual(len(enviados), 5)  # cabecera + 3 recetas + pie
+        for n, texto in enumerate(enviados[1:4], start=1):
+            self.assertIn(f"Receta {n}", texto)
+            # Cada mensaje trae una receta y solo una.
+            self.assertNotIn(f"Receta {n + 1}", texto)
 
     async def test_hecho_sin_args(self):
         update, context = _fake_update()

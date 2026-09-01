@@ -28,6 +28,7 @@ class NeveraItemSerializer(serializers.ModelSerializer):
             "fecha_caducidad",
             "fecha_añadido",
             "origen",
+            "es_basico",
         ]
 
 

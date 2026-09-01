@@ -39,6 +39,17 @@ _pending_recetas: dict[int, list[dict]] = {}
 
 DIAS_ALERTA_CADUCIDAD = 3
 
+# Valores que se aceptan como booleano en /editar es_basico=...
+_BOOLEANOS = {
+    "si": True,
+    "sí": True,
+    "true": True,
+    "1": True,
+    "no": False,
+    "false": False,
+    "0": False,
+}
+
 HELP_TEXT = (
     "Comandos disponibles:\n\n"
     "/analisis [instrucción] — análisis del último día con Gemini. "
@@ -51,8 +62,9 @@ HELP_TEXT = (
     "/nevera — lista el inventario actual.\n"
     "/borrar <id> — borra un item de la nevera.\n"
     "/editar <id> <campo>=<valor> ... — edita un item "
-    "(campos: cantidad, unidad, categoria, fecha_caducidad, nombre).\n"
-    "/comer — sugerencia de qué cocinar con lo que hay en la nevera.\n"
+    "(campos: cantidad, unidad, categoria, fecha_caducidad, nombre, es_basico).\n"
+    "/comer [sin <ingredientes>] — sugerencia de qué cocinar con lo que hay "
+    "en la nevera. Ej: /comer sin pollo, huevos\n"
     "/hecho <n> — confirma la receta n de la última sugerencia de /comer "
     "y descuenta sus ingredientes.\n"
     "/comprar <texto de la gazetka> — dice qué ofertas merece la pena "
@@ -265,7 +277,7 @@ async def editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(args) < 2:
         await update.effective_message.reply_text(
             "Uso: /editar <id> <campo>=<valor> ... "
-            "(campos: cantidad, unidad, categoria, fecha_caducidad, nombre)"
+            "(campos: cantidad, unidad, categoria, fecha_caducidad, nombre, es_basico)"
         )
         return
 
@@ -296,6 +308,14 @@ async def editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cambios["categoria"] = valor.strip()
         elif campo == "nombre":
             cambios["nombre"] = valor.strip()
+        elif campo == "es_basico":
+            texto = valor.strip().lower()
+            if texto not in _BOOLEANOS:
+                await update.effective_message.reply_text(
+                    f"Valor inválido para es_basico: {valor!r} (usa si/no)"
+                )
+                return
+            cambios["es_basico"] = _BOOLEANOS[texto]
         elif campo == "fecha_caducidad":
             if valor.strip().lower() in ("none", "null", "-"):
                 cambios["fecha_caducidad"] = None
@@ -332,9 +352,11 @@ async def comer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await update.effective_chat.send_action(ChatAction.TYPING)
 
-    from nevera.services import get_items_by_expiry
+    from nevera.services import excluir_por_nombre, get_items_by_expiry
     from nevera.suggestions import suggest_recipes
     from supabase_data.services import get_recent_analyses
+
+    terminos = _parse_exclusiones(_args(context))
 
     try:
         items = await asyncio.to_thread(get_items_by_expiry)
@@ -343,6 +365,22 @@ async def comer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "La nevera está vacía. Usa /anadir para dar de alta la compra."
             )
             return
+
+        avisos = []
+        if terminos:
+            items, excluidos, sin_coincidencia = excluir_por_nombre(items, terminos)
+            if excluidos:
+                avisos.append("Sin: " + ", ".join(i.nombre for i in excluidos))
+            # Un término que no casa con nada suele ser una errata. Se avisa en
+            # vez de ignorarlo: si no, la receta llegaría con el ingrediente
+            # que querías evitar y parecería que el bot no te ha hecho caso.
+            if sin_coincidencia:
+                avisos.append("⚠️ No encontré en la nevera: " + ", ".join(sin_coincidencia))
+            if not items:
+                await update.effective_message.reply_text(
+                    "Al excluir eso no queda nada en la nevera."
+                )
+                return
 
         analyses = await asyncio.to_thread(get_recent_analyses, 1)
         ultimo_analisis = analyses[0] if analyses else None
@@ -354,7 +392,24 @@ async def comer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     _pending_recetas[chat_id] = recetas
-    await _reply_long(update, _formato_recetas(recetas, ultimo_analisis))
+    mensajes = _formato_recetas(recetas, ultimo_analisis)
+    if avisos:
+        mensajes[0] = "\n".join(avisos) + "\n" + mensajes[0]
+    for mensaje in mensajes:
+        # Cada mensaje por separado, pero pasando por _reply_long: una receta
+        # muy larga sigue pudiendo pasar del límite de 4096 de Telegram.
+        await _reply_long(update, mensaje)
+
+
+def _parse_exclusiones(args: list[str]) -> list[str]:
+    """Saca los términos de `/comer sin pollo, huevos`.
+
+    Se separa por comas, no por espacios, para que "sin salmon ahumado" sea un
+    único término de dos palabras y no dos términos sueltos.
+    """
+    if not args or args[0].lower() != "sin":
+        return []
+    return [t.strip() for t in " ".join(args[1:]).split(",") if t.strip()]
 
 
 @restricted
@@ -440,24 +495,35 @@ def _formato_ofertas(recomendaciones: list[dict]) -> str:
     return "\n".join(lineas)
 
 
-def _formato_recetas(recetas: list[dict], ultimo_analisis: dict | None) -> str:
-    bloques = []
+def _formato_recetas(recetas: list[dict], ultimo_analisis: dict | None) -> list[str]:
+    """Devuelve la lista de mensajes a enviar: cabecera, una receta por mensaje
+    y pie.
+
+    Una receta por mensaje para poder copiarla suelta (mantener pulsado ->
+    copiar en Telegram copia el mensaje entero) y pegarla donde busques cómo
+    prepararla. Por eso el mensaje de cada receta va limpio: sin la cabecera
+    del análisis ni el recordatorio de /hecho, que ensuciarían el pegado.
+
+    Los ingredientes van uno por línea por lo mismo: se leen mejor y se pegan
+    mejor que una lista separada por comas.
+    """
     if ultimo_analisis:
-        bloques.append(f"(Sugerencia según el análisis del {ultimo_analisis['analysis_date']})")
+        cabecera = f"(Sugerencia según el análisis del {ultimo_analisis['analysis_date']})"
     else:
-        bloques.append("(No hay ningún análisis de recuperación guardado todavía.)")
+        cabecera = "(No hay ningún análisis de recuperación guardado todavía.)"
 
+    mensajes = [cabecera]
     for i, receta in enumerate(recetas, start=1):
-        ingredientes = ", ".join(
-            f"{ing['cantidad']} {ing['unidad']} {ing['nombre']}" for ing in receta["ingredientes"]
+        ingredientes = "\n".join(
+            f"• {ing['cantidad']} {ing['unidad']} {ing['nombre']}" for ing in receta["ingredientes"]
         )
-        bloques.append(
-            f"*{i}. {receta['nombre']}*\n{receta.get('descripcion', '')}\n"
-            f"Ingredientes: {ingredientes}"
+        mensajes.append(
+            f"*{i}. {receta['nombre']}*\n{receta.get('descripcion', '')}\n\n"
+            f"Ingredientes:\n{ingredientes}"
         )
 
-    bloques.append("Cuando hagas una, confirma con /hecho <n>")
-    return "\n\n".join(bloques)
+    mensajes.append("Cuando hagas una, confirma con /hecho <n>")
+    return mensajes
 
 
 def _formato_resultado_hecho(receta: dict, resultado: dict) -> str:
@@ -467,6 +533,10 @@ def _formato_resultado_hecho(receta: dict, resultado: dict) -> str:
             lineas.append(f"• {item['nombre']}: agotado")
         else:
             lineas.append(f"• {item['nombre']}: quedan {item['restante']} {item['unidad']}")
+
+    if resultado.get("basicos"):
+        nombres = ", ".join(item["nombre"] for item in resultado["basicos"])
+        lineas.append(f"🧂 Despensa (no se descuenta): {nombres}")
 
     if resultado["no_encontrados"]:
         nombres = ", ".join(c["nombre"] for c in resultado["no_encontrados"])
@@ -480,16 +550,30 @@ def _formato_items(items: list[dict]) -> str:
     for it in items:
         cat = f" [{it['categoria']}]" if it.get("categoria") else ""
         cad = f" (caduca {it['fecha_caducidad']})" if it.get("fecha_caducidad") else ""
-        lineas.append(f"• {it['cantidad']} {it['unidad']} {it['nombre']}{cat}{cad}")
+        # Se muestra en la confirmación de /anadir para que puedas cazar una
+        # mala clasificación de Gemini antes de guardar, no después.
+        basico = " 🧂 despensa" if it.get("es_basico") else ""
+        lineas.append(f"• {it['cantidad']} {it['unidad']} {it['nombre']}{cat}{cad}{basico}")
     return "\n".join(lineas)
 
 
 def _formato_nevera(items) -> str:
+    """Detalla los perecederos y colapsa la despensa en una sola línea.
+
+    Sobre los básicos no se decide nada (ni se gastan por caducidad ni se
+    descuentan), así que listarlos enteros solo entierra lo único accionable:
+    qué hay que gastar y cuándo. Se resumen, pero se siguen nombrando para
+    poder ver de un vistazo si falta alguno.
+    """
     from nevera.units import format_cantidad
 
     hoy = timezone.localtime().date()
     grupos: dict[str, list] = {}
+    basicos = []
     for item in items:
+        if item.es_basico:
+            basicos.append(item)
+            continue
         clave = item.categoria or "sin categoría"
         grupos.setdefault(clave, []).append(item)
 
@@ -506,6 +590,11 @@ def _formato_nevera(items) -> str:
             cantidad = format_cantidad(item.cantidad, item.unidad)
             lineas.append(f"#{item.id} {item.nombre}: {cantidad}{cad}{alerta}")
         bloques.append("\n".join(lineas))
+
+    if basicos:
+        nombres = ", ".join(item.nombre for item in sorted(basicos, key=lambda i: i.nombre))
+        bloques.append(f"🧂 *Despensa* ({len(basicos)}): {nombres}")
+
     return "\n\n".join(bloques)
 
 

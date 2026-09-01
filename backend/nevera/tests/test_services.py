@@ -133,6 +133,161 @@ class NeveraServicesTests(unittest.TestCase):
 
         self.assertIsNone(services.edit_item(999999999, cantidad=1))
 
+    # --- Básicos de despensa (es_basico) -----------------------------------
+
+    def test_consume_items_no_descuenta_basicos(self):
+        """El bug que motivó el campo: una receta con 'sal 1 ud' borraba la sal."""
+        services.add_items(
+            [{"nombre": f"{PREFIJO} sal", "cantidad": 1, "unidad": "ud", "es_basico": True}]
+        )
+
+        resultado = services.consume_items(
+            [{"nombre": f"{PREFIJO} sal", "unidad": "ud", "cantidad": 1}]
+        )
+
+        self.assertEqual(resultado["aplicados"], [])
+        self.assertEqual(resultado["basicos"], [{"nombre": f"{PREFIJO} sal", "unidad": "ud"}])
+        item = NeveraItem.objects.get(nombre=f"{PREFIJO} sal", unidad="ud")
+        self.assertEqual(float(item.cantidad), 1.0)
+
+    def test_consume_items_reconoce_basico_con_otra_unidad(self):
+        """Detectado en la prueba e2e: la sal está como '1 ud' y Gemini pide '3 g'.
+
+        Sin esto el básico caería en no_encontrados y el bot avisaría de un
+        problema inexistente en cada /hecho.
+        """
+        services.add_items(
+            [{"nombre": f"{PREFIJO} sal2", "cantidad": 1, "unidad": "ud", "es_basico": True}]
+        )
+
+        resultado = services.consume_items(
+            [{"nombre": f"{PREFIJO} sal2", "unidad": "g", "cantidad": 3}]
+        )
+
+        self.assertEqual(resultado["no_encontrados"], [])
+        self.assertEqual(resultado["basicos"], [{"nombre": f"{PREFIJO} sal2", "unidad": "ud"}])
+        self.assertTrue(NeveraItem.objects.filter(nombre=f"{PREFIJO} sal2").exists())
+
+    def test_consume_items_perecedero_con_otra_unidad_sigue_sin_encontrarse(self):
+        """El atajo anterior es solo para básicos: un perecedero con la unidad
+        cambiada sigue siendo un 'no encontrado' que hay que revisar."""
+        services.add_items([{"nombre": f"{PREFIJO} huevos", "cantidad": 6, "unidad": "ud"}])
+
+        resultado = services.consume_items(
+            [{"nombre": f"{PREFIJO} huevos", "unidad": "g", "cantidad": 100}]
+        )
+
+        self.assertEqual(resultado["basicos"], [])
+        self.assertEqual(len(resultado["no_encontrados"]), 1)
+
+    def test_excluir_por_nombre_casa_por_contenido(self):
+        """Quien escribe "sin pollo" no teclea "pollo deshuesado y sin piel"."""
+        items = services.add_items(
+            [
+                {
+                    "nombre": f"{PREFIJO} pollo deshuesado y sin piel",
+                    "cantidad": 700,
+                    "unidad": "g",
+                },
+                {"nombre": f"{PREFIJO} huevos", "cantidad": 4, "unidad": "ud"},
+            ]
+        )
+
+        restantes, excluidos, sin_coincidencia = services.excluir_por_nombre(items, ["POLLO"])
+
+        self.assertEqual([i.nombre for i in restantes], [f"{PREFIJO} huevos"])
+        self.assertEqual([i.nombre for i in excluidos], [f"{PREFIJO} pollo deshuesado y sin piel"])
+        self.assertEqual(sin_coincidencia, [])
+
+    def test_excluir_por_nombre_avisa_de_terminos_sin_coincidencia(self):
+        items = services.add_items([{"nombre": f"{PREFIJO} huevos", "cantidad": 4, "unidad": "ud"}])
+
+        restantes, excluidos, sin_coincidencia = services.excluir_por_nombre(
+            items, ["huevos", "polllo"]
+        )
+
+        self.assertEqual(restantes, [])
+        self.assertEqual(len(excluidos), 1)
+        # La errata se reporta: si se ignorara, la receta podría traer pollo.
+        self.assertEqual(sin_coincidencia, ["polllo"])
+
+    def test_excluir_por_nombre_ignora_acentos_y_mayusculas(self):
+        items = services.add_items(
+            [{"nombre": f"{PREFIJO} platanos", "cantidad": 5, "unidad": "ud"}]
+        )
+
+        restantes, excluidos, _ = services.excluir_por_nombre(items, ["Plátanos"])
+
+        self.assertEqual(restantes, [])
+        self.assertEqual(len(excluidos), 1)
+
+    def test_get_items_by_expiry_relega_basicos_al_final(self):
+        hoy = date.today()
+        services.add_items(
+            [
+                {"nombre": f"{PREFIJO} zsal", "cantidad": 1, "unidad": "ud", "es_basico": True},
+                {"nombre": f"{PREFIJO} zsin_fecha", "cantidad": 1, "unidad": "ud"},
+                {
+                    "nombre": f"{PREFIJO} zpronto",
+                    "cantidad": 1,
+                    "unidad": "ud",
+                    "fecha_caducidad": hoy + timedelta(days=1),
+                },
+            ]
+        )
+
+        todos = [i.nombre for i in services.get_items_by_expiry() if i.nombre.startswith(PREFIJO)]
+        self.assertEqual(
+            todos,
+            [f"{PREFIJO} zpronto", f"{PREFIJO} zsin_fecha", f"{PREFIJO} zsal"],
+        )
+
+    def test_basico_con_fecha_no_entra_en_el_ranking_de_urgencia(self):
+        """Aunque tenga fecha, un básico nunca es 'urgente': se filtra por es_basico."""
+        services.add_items(
+            [
+                {
+                    "nombre": f"{PREFIJO} aceite",
+                    "cantidad": 1,
+                    "unidad": "l",
+                    "es_basico": True,
+                    "fecha_caducidad": date.today() + timedelta(days=1),
+                }
+            ]
+        )
+
+        urgentes = [
+            i.nombre
+            for i in services.get_items_by_expiry(dias_limite=5)
+            if i.nombre.startswith(PREFIJO)
+        ]
+        self.assertEqual(urgentes, [])
+
+    def test_add_items_promociona_a_basico_pero_no_degrada(self):
+        services.add_items(
+            [{"nombre": f"{PREFIJO} miel", "cantidad": 1, "unidad": "ud", "es_basico": True}]
+        )
+
+        # Una compra posterior mal clasificada no debe deshacer la marca.
+        services.add_items(
+            [{"nombre": f"{PREFIJO} miel", "cantidad": 1, "unidad": "ud", "es_basico": False}]
+        )
+
+        item = NeveraItem.objects.get(nombre=f"{PREFIJO} miel", unidad="ud")
+        self.assertTrue(item.es_basico)
+
+    def test_edit_item_cambia_es_basico(self):
+        [item] = services.add_items(
+            [{"nombre": f"{PREFIJO} pimenton", "cantidad": 1, "unidad": "ud"}]
+        )
+        self.assertFalse(item.es_basico)
+
+        actualizado = services.edit_item(item.id, es_basico=True)
+        self.assertTrue(actualizado.es_basico)
+
+        actualizado = services.edit_item(item.id, es_basico=False)
+        self.assertFalse(actualizado.es_basico)
+
 
 if __name__ == "__main__":
     unittest.main()
