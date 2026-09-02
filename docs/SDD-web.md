@@ -281,7 +281,7 @@ siguiente (igual que en el SDD de nevera).
 
 ### Iteración 2 — escrituras
 
-4. [código listo, falta prueba e2e] **Editar la nevera desde la web.**
+4. [hecho y verificado e2e, 2026-09-02] **Editar la nevera desde la web.**
    `PATCH`/`DELETE /api/nevera/items/{id}` (`api.views.NeveraItemView`) +
    edición y borrado en línea en la tabla de la SPA. Ninguna lógica nueva: las
    dos rutas envuelven `nevera.services.edit_item` / `delete_item`, las mismas
@@ -315,9 +315,23 @@ siguiente (igual que en el SDD de nevera).
 
    Verificado con 14 tests (`api/tests/test_write_endpoints.py`, contra la
    Supabase real, patrón de centinela + limpieza en `tearDown`) y el build y
-   los tests del frontend en verde. **Pendiente:** la prueba end-to-end de
-   editar un item desde el navegador y verlo reflejado en `/nevera` de
-   Telegram y en la BD.
+   los tests del frontend en verde.
+
+   **Verificación end-to-end (2026-09-02):** editado un item desde la SPA en
+   `localhost:5173` contra el `runserver` local, y el cambio visible en
+   `/nevera` del bot de Telegram corriendo como proceso aparte. Es la prueba
+   de que la decisión de §3.1 se sostiene: dos interfaces, un solo
+   `services.py`, una sola BD, sin estado divergente.
+
+   Incidencia resuelta, de configuración: la SPA no cargaba **ningún** dato
+   porque `frontend/.env` seguía apuntando al túnel `cloudflared` de la prueba
+   del 2026-08-31, que genera una URL nueva en cada arranque y llevaba muerto
+   desde entonces. Diagnóstico por capas: `curl` al backend local devolvía
+   `401` (servidor y auth vivos, respuesta correcta sin token) y `curl` al
+   túnel devolvía `000` (curl no llega a conectar; no es un código HTTP), lo
+   que sitúa el fallo en la configuración de destino, no en el código de la
+   fase. Regla: si fallan todas las pantallas a la vez, el sospechoso es el
+   transporte o la configuración, no la pantalla.
 5. **Acciones con IA desde la web.** `/api/nevera/parse` + `items`,
    `/api/nevera/suggestions` + `consume`, `/api/analyses` (POST),
    `/api/ofertas/analyze`. Resolver el estado conversacional (§6) y el lock
