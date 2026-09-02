@@ -60,7 +60,14 @@ function calcularCambios(original: NeveraItem, borrador: Borrador): NeveraItemUp
   return cambios;
 }
 
-const INPUT = "w-full rounded border px-2 py-1 text-sm";
+/** Campo de texto sobre fondo oscuro: el relleno sube un escalón de elevación
+ *  (--color-raised) en vez de bajar, que es como se lee "hueco" en oscuro. */
+const INPUT =
+  "w-full rounded border border-line bg-raised px-2 py-1 text-sm text-ink " +
+  "focus:border-cyan focus:outline-none";
+
+/** Botón secundario (Editar, Cancelar, No): contorno, sin relleno. */
+const BOTON = "rounded border border-line px-2 py-1 text-xs text-ink-soft hover:text-ink";
 
 export default function Nevera() {
   const { data, isLoading, isError } = useNevera();
@@ -115,16 +122,16 @@ export default function Nevera() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Nevera</h1>
-      {isLoading && <p className="text-sm text-slate-500">Cargando…</p>}
-      {isError && <p className="text-sm text-red-600">No se pudo cargar la nevera.</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {data && data.length === 0 && <p className="text-sm text-slate-500">La nevera está vacía.</p>}
+      <h1 className="text-3xl font-bold tracking-tight text-ink">Nevera</h1>
+      {isLoading && <p className="text-sm text-ink-muted">Cargando…</p>}
+      {isError && <p className="text-sm text-coral">No se pudo cargar la nevera.</p>}
+      {error && <p className="text-sm text-coral">{error}</p>}
+      {data && data.length === 0 && <p className="text-sm text-ink-muted">La nevera está vacía.</p>}
 
       {data && data.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border bg-white">
+        <div className="overflow-x-auto rounded-card bg-surface shadow-card">
           <table className="w-full text-sm">
-            <thead className="border-b bg-slate-50 text-left text-xs uppercase text-slate-500">
+            <thead className="border-b border-line bg-raised text-left text-xs uppercase text-ink-muted">
               <tr>
                 <th className="px-3 py-2">Nombre</th>
                 <th className="px-3 py-2">Cantidad</th>
@@ -142,7 +149,7 @@ export default function Nevera() {
 
                 if (enEdicion && borrador) {
                   return (
-                    <tr key={item.id} className="border-b bg-slate-50 last:border-0">
+                    <tr key={item.id} className="border-b border-line bg-raised last:border-0">
                       <td className="px-3 py-2">
                         <input
                           className={INPUT}
@@ -197,14 +204,14 @@ export default function Nevera() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right">
                         <button
-                          className="rounded bg-slate-800 px-2 py-1 text-xs text-white disabled:opacity-50"
+                          className="rounded bg-cyan px-2 py-1 text-xs font-semibold text-navbar disabled:opacity-50"
                           onClick={() => void guardar(item)}
                           disabled={editar.isPending}
                         >
                           {editar.isPending ? "Guardando…" : "Guardar"}
                         </button>
                         <button
-                          className="ml-2 rounded border px-2 py-1 text-xs"
+                          className={`ml-2 ${BOTON}`}
                           onClick={cancelar}
                           disabled={editar.isPending}
                         >
@@ -216,15 +223,15 @@ export default function Nevera() {
                 }
 
                 return (
-                  <tr key={item.id} className="border-b last:border-0">
+                  <tr key={item.id} className="border-b border-line last:border-0">
                     <td className="px-3 py-2">{item.nombre}</td>
                     <td className="px-3 py-2">
                       {item.cantidad} {item.unidad}
                     </td>
-                    <td className="px-3 py-2 text-slate-500">{item.categoria ?? "—"}</td>
+                    <td className="px-3 py-2 text-ink-muted">{item.categoria ?? "—"}</td>
                     <td
                       className={`px-3 py-2 ${
-                        alerta ? "font-semibold text-red-600" : "text-slate-500"
+                        alerta ? "font-semibold text-coral" : "text-ink-muted"
                       }`}
                     >
                       {item.fecha_caducidad ?? "—"}
@@ -232,20 +239,20 @@ export default function Nevera() {
                         <span className="ml-1">({dias <= 0 ? "caducado" : `${dias} d`})</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-slate-500">{item.es_basico ? "Sí" : "—"}</td>
+                    <td className="px-3 py-2 text-ink-muted">{item.es_basico ? "Sí" : "—"}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       {confirmandoId === item.id ? (
                         <>
-                          <span className="mr-2 text-xs text-slate-500">¿Seguro?</span>
+                          <span className="mr-2 text-xs text-ink-muted">¿Seguro?</span>
                           <button
-                            className="rounded bg-red-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+                            className="rounded bg-coral px-2 py-1 text-xs font-semibold text-navbar disabled:opacity-50"
                             onClick={() => void confirmarBorrado(item.id)}
                             disabled={borrar.isPending}
                           >
                             Sí, borrar
                           </button>
                           <button
-                            className="ml-2 rounded border px-2 py-1 text-xs"
+                            className={`ml-2 ${BOTON}`}
                             onClick={() => setConfirmandoId(null)}
                           >
                             No
@@ -254,13 +261,13 @@ export default function Nevera() {
                       ) : (
                         <>
                           <button
-                            className="rounded border px-2 py-1 text-xs"
+                            className={BOTON}
                             onClick={() => empezarEdicion(item)}
                           >
                             Editar
                           </button>
                           <button
-                            className="ml-2 rounded border px-2 py-1 text-xs text-red-600"
+                            className={`ml-2 ${BOTON} text-coral hover:text-coral`}
                             onClick={() => setConfirmandoId(item.id)}
                           >
                             Borrar

@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "./client";
-import type { Analysis, LastDay, NeveraItem, NeveraItemUpdate, Serie } from "./types";
+import type {
+  Analysis,
+  DayDetail,
+  LastDay,
+  NeveraItem,
+  NeveraItemUpdate,
+  Serie,
+  SleepNight,
+} from "./types";
 
 export function useLastDay() {
   return useQuery({
@@ -14,6 +22,24 @@ export function useSeries(metric: string) {
   return useQuery({
     queryKey: ["health", "series", metric],
     queryFn: () => apiFetch<Serie>(`/api/health/series?metric=${encodeURIComponent(metric)}`),
+  });
+}
+
+/** `fecha` undefined = el último día con datos (lo que hace el dashboard). */
+export function useSleepNight(fecha?: string) {
+  return useQuery({
+    queryKey: ["health", "sleep-night", fecha ?? "ultimo"],
+    queryFn: () =>
+      apiFetch<SleepNight>(
+        fecha ? `/api/health/sleep-night?date=${fecha}` : "/api/health/sleep-night",
+      ),
+  });
+}
+
+export function useDayDetail(fecha?: string) {
+  return useQuery({
+    queryKey: ["health", "day", fecha ?? "ultimo"],
+    queryFn: () => apiFetch<DayDetail>(fecha ? `/api/health/day?date=${fecha}` : "/api/health/day"),
   });
 }
 
@@ -54,8 +80,7 @@ export function useEditarItem() {
 export function useBorrarItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) =>
-      apiFetch<void>(`/api/nevera/items/${id}`, { method: "DELETE" }),
+    mutationFn: (id: number) => apiFetch<void>(`/api/nevera/items/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nevera"] }),
   });
 }

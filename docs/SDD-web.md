@@ -123,6 +123,8 @@ frontend/
 | `POST` | `/api/auth/refresh` | SimpleJWT | — |
 | `GET` | `/api/health/last-day` | `get_last_day_data()` | `/hoy` |
 | `GET` | `/api/health/series?metric=&from=&to=` | consulta nueva en `supabase_data/services.py` | (nuevo — gráficas) |
+| `GET` | `/api/health/day?date=` | `get_day_detail()` | (nuevo — detalle de un día) |
+| `GET` | `/api/health/sleep-night?date=` | `get_sleep_night()` | (nuevo — hipnograma) |
 | `GET` | `/api/analyses?limit=` | `get_recent_analyses()` | `/historial` |
 | `POST` | `/api/analyses` | `run_analysis()` (con lock) | `/analisis` |
 | `GET` | `/api/nevera` | `list_all()` | `/nevera` |
@@ -134,8 +136,11 @@ frontend/
 | `POST` | `/api/nevera/consume` | `consume_items()` | `/hecho` |
 | `POST` | `/api/ofertas/analyze` | `analizar_ofertas()` | `/comprar` |
 
-`/api/health/series` es el único servicio de datos nuevo: agrega muestras por
-día/rango para las gráficas. El resto son envoltorios directos.
+Los cuatro servicios de datos nuevos viven en `supabase_data/services.py`:
+`get_series` agrega muestras por día/rango, `get_day_detail` reúne todo lo de
+la página de un día, `get_sleep_night` reconstruye la noche para el hipnograma
+y `build_day_summary` calcula los KPIs de la cabecera. El resto de rutas son
+envoltorios directos de servicios que ya usaba el bot.
 
 ## 5. Autenticación
 
@@ -332,12 +337,124 @@ siguiente (igual que en el SDD de nevera).
    que sitúa el fallo en la configuración de destino, no en el código de la
    fase. Regla: si fallan todas las pantallas a la vez, el sospechoso es el
    transporte o la configuración, no la pantalla.
-5. **Acciones con IA desde la web.** `/api/nevera/parse` + `items`,
+### Iteración 3 — la web como interfaz de consulta de verdad
+
+5. [hecho y verificado e2e, 2026-09-02] **Detalle de día, hipnograma e
+   interfaz oscura.** Hasta aquí la web enseñaba el último día como una
+   volcada de datos crudos; esta fase la convierte en algo que se mira. Tres
+   endpoints nuevos de solo lectura, un dashboard con KPIs y navegación por
+   días, y un rediseño completo de la interfaz.
+
+   **Backend** — `GET /api/health/day?date=` (`get_day_detail`) y
+   `GET /api/health/sleep-night?date=` (`get_sleep_night`), más un bloque
+   `summary` añadido a `/health/last-day`. Toda la lógica en
+   `supabase_data/services.py`; las views siguen siendo finas.
+
+   Decisiones de esta fase:
+   - **Los KPIs se calculan en el servicio, no en la SPA.** Si el frontend
+     promediase la SpO₂ por su cuenta, la web y el bot podrían enseñar números
+     distintos del mismo dato. `build_day_summary` es la única fuente de
+     verdad, y la web solo la pinta.
+   - **Una noche se atribuye al día en que te despiertas.** Antes la serie
+     agrupaba por `TruncDate(stage_start)`, lo que partía en dos mitades cada
+     noche que cruza medianoche y llenaba la gráfica de huecos y picos. Es el
+     criterio de Health Connect, Fitbit y Garmin.
+   - **Deduplicación de sesiones al leer, por solapamiento.** El sync externo
+     guarda a veces la misma noche dos veces con dos `parent_key` distintos, y
+     el `unique_together (parent_key, stage_start)` no lo impide justamente
+     porque el `parent_key` difiere: una noche de 8h 20m salía como 16h 40m.
+     Comparar huellas exactas no basta —la noche del 12-08 estaba guardada dos
+     veces con finales distintos, seguramente dos pasadas del sync—, así que el
+     criterio es el solapamiento temporal: como nadie duerme dos veces a la
+     vez, de cada grupo solapado se conserva la sesión con más minutos de
+     sueño. Se deduplica **al leer y no borrando filas** porque `sleep_stages`
+     es `managed = False`: lo que borrase Django volvería en la siguiente
+     sincronización.
+   - **"La noche" es la sesión más larga que termina ese día, no todo lo que se
+     durmió.** Mezclar una siesta de 47 min haría que la tarjeta dijera 9h 07m
+     mientras el hipnograma justo debajo dibuja 8h 20m.
+   - **Un solo endpoint para el detalle del día**, en vez de que la SPA encadene
+     tres llamadas: resumen, series intradía y días vecinos salen del mismo
+     día. El hipnograma va aparte porque su unidad es la noche, no el día
+     natural.
+   - **`prev_date`/`next_date` son días CON datos**, no el día natural
+     anterior: el sync tiene huecos de semanas y las flechas llevarían a
+     pantallas vacías.
+   - **Las series intradía viajan como `{t, v}`**, no como la fila entera: la
+     gráfica no necesita `uuid` ni `parent_key`, y un día de frecuencia
+     cardíaca son ~700 filas.
+   - **Los instantes se mandan en hora local con offset explícito** y el
+     frontend los lee con `horaLocalServidor` (quita el offset y usa los
+     getters `getUTC*`). Si no, `new Date(iso)` los reinterpretaría en la zona
+     del navegador y la misma noche se dibujaría desplazada al abrir la web
+     desde otro huso.
+
+   **Frontend** — componentes nuevos `Card`, `StatCard`, `Icons`, `Hypnogram` e
+   `IntradayChart`; ruta `/dia/:fecha` (`DayDetail`); utilidades en
+   `lib/format.ts`. El dashboard pasa a ser cuatro KPIs + hipnograma de la
+   última noche + las dos series de 30 días, y los puntos de las gráficas
+   enlazan al detalle del día.
+
+   - **La interfaz es oscura de forma fija**, sin conmutador: es una app de un
+     solo usuario que se mira sobre todo de noche, y un único modo evita
+     duplicar y revalidar toda la paleta. Si algún día hace falta el modo
+     claro, se añade redefiniendo las mismas variables bajo
+     `prefers-color-scheme`, sin tocar ningún componente.
+   - **Todo el color vive en los tokens de `index.css`** (`@theme` de Tailwind
+     v4). Ningún componente tiene colores propios; por eso el cambio a oscuro
+     fue casi solo redefinir variables.
+   - **En oscuro la elevación se comunica con luminosidad, no con sombra**
+     (una sombra negra sobre negro no se ve): `canvas` → `navbar` → `surface`
+     → `raised`, cada capa que sube aclara un paso.
+   - **La paleta de datos se re-escalona, no se invierte.** Mismos tonos, otro
+     escalón: los colores que funcionan sobre blanco pierden contraste sobre
+     negro. Validado con el validador de paleta sobre la superficie oscura
+     (banda de luminosidad, suelo de croma, separación bajo daltonismo 9,6 ΔE,
+     visión normal 23,0 ΔE, contraste ≥ 3:1). Las fases del sueño se validan
+     aparte como grupo de cuatro, en orden de fila.
+   - **`color-scheme: dark` en `html`** para lo que el CSS no controla: barras
+     de scroll, el desplegable del `<input type="date">` de la nevera y el
+     relleno del autocompletado. Sin ello quedan islas blancas.
+   - **`lib/chartTheme.ts` centraliza los hex de las gráficas.** Recharts pinta
+     SVG y escribe el color como atributo, no como clase: no entiende
+     Tailwind. En vez de dejar los hex sueltos por los componentes, hay un solo
+     fichero y cada constante apunta al token del que sale.
+   - **La identidad nunca depende solo del color**: cada fila del hipnograma
+     lleva su etiqueta escrita, y el reparto de la noche va también en texto.
+
+   Verificado con 8 tests nuevos (`supabase_data/tests/`, contra la Supabase
+   real, con centinelas fuera del rango y limpieza en `tearDown`) que cubren la
+   deduplicación, la atribución al día del despertar, la siesta que no se
+   mezcla y los extremos de la noche del cambio de hora. `ruff`, `mypy` y los
+   141 tests del backend en verde; `tsc`, `vite build` y `vitest` del frontend
+   también.
+
+   Bug encontrado y corregido en el repaso: `get_sleep_night` sacaba `start` y
+   `end` comparando los ISO **ya formateados como texto**. La madrugada del
+   cambio de hora convive con dos offsets y ahí el orden alfabético deja de
+   coincidir con el cronológico (`"02:30:00+02:00"` es *anterior* a
+   `"02:10:00+01:00"`, pero como texto gana el primero): una vez al año la
+   cabecera del hipnograma habría dado la noche del revés. Ahora se calcula
+   sobre los `datetime`.
+
+   **Verificación end-to-end (2026-09-02):** backend local (`runserver`) y SPA
+   local (`vite`) contra la Supabase real, recorriendo las cuatro pantallas con
+   datos de verdad: KPIs del último día, hipnograma con el reparto por fases,
+   las dos series de 30 días, el detalle de un día con sus gráficas intradía y
+   la navegación entre días, el histórico de análisis y la nevera con una fila
+   en edición.
+
+   **Pendiente:** la pantalla de Login quedó migrada a los tokens pero no
+   revisada en pantalla (habría que cerrar sesión para verla).
+
+### Iteración 4 — escrituras con IA
+
+6. **Acciones con IA desde la web.** `/api/nevera/parse` + `items`,
    `/api/nevera/suggestions` + `consume`, `/api/analyses` (POST),
    `/api/ofertas/analyze`. Resolver el estado conversacional (§6) y el lock
    (§7-C, `pg_advisory_lock`). Verificación end-to-end de cada flujo:
    parsear→confirmar alta, sugerir→marcar hecho con descuento en BD, lanzar
    análisis.
-6. **Repaso y cierre:** revisar qué comandos quedan solo en Telegram a
+7. **Repaso y cierre:** revisar qué comandos quedan solo en Telegram a
    propósito, documentar en la tabla §4 el estado final, y dejar listado lo
    que depende del SDD de nube (dominio, HTTPS, `ALLOWED_HOSTS`, CORS de prod).
