@@ -226,6 +226,14 @@ a la vista. La versión mínima segura es la de abajo (~1-2 h en fase 1).
   igualmente, y `supabase_data` (tablas de sync de salud) no debe importar
   `nevera.services`.
 
+- **G. ¿`/comprar` (ofertas) en la web o solo en Telegram?**
+  **Resuelto: en la web** (2026-09-02, con el usuario). Se planteó dejarlo solo
+  en Telegram para no construir una pantalla más, y se descartó por ergonomía
+  de uso real: la entrada es un bloque largo de texto pegado del folleto del
+  supermercado, y un `<textarea>` en el navegador lo acepta de una vez mientras
+  Telegram parte los mensajes largos y obliga a mandarlos por trozos. Es la
+  primera función del proyecto que vive mejor en la web que en el bot.
+
 ## 8. Plan de implementación (por fases)
 
 Cada fase se verifica con una prueba real end-to-end antes de pasar a la
@@ -449,12 +457,59 @@ siguiente (igual que en el SDD de nevera).
 
 ### Iteración 4 — escrituras con IA
 
-6. **Acciones con IA desde la web.** `/api/nevera/parse` + `items`,
+6. [en curso] **Acciones con IA desde la web.** `/api/nevera/parse` + `items`,
    `/api/nevera/suggestions` + `consume`, `/api/analyses` (POST),
    `/api/ofertas/analyze`. Resolver el estado conversacional (§6) y el lock
    (§7-C, `pg_advisory_lock`). Verificación end-to-end de cada flujo:
    parsear→confirmar alta, sugerir→marcar hecho con descuento en BD, lanzar
    análisis.
+
+   **6.a [hecho y verificado e2e, 2026-09-02] Lanzar un análisis desde la web.**
+   `pg_advisory_lock` en `health_ai/locks.py` (cierra la decisión §7-C),
+   `POST /api/analyses` en `api/views.py` y el formulario de la pantalla
+   `/analisis` en la SPA (`useLanzarAnalisis` + el componente `LanzarAnalisis`).
+
+   Decisiones de esta parte:
+   - **`200`, no `201`.** Llamar dos veces el mismo día no crea dos análisis:
+     sobrescribe el mismo. Un `201` prometería un recurso nuevo cada vez, con
+     su propia URL, y aquí no lo hay.
+   - **`409`, no `429`, cuando el lock está tomado.** El cliente no ha hecho
+     nada mal ni se ha pasado de cuota: es que el estado del sistema es
+     incompatible con lo que pide, y encima el conflicto puede haberlo causado
+     el bot, no él. El frontend lo traduce a lenguaje humano en vez de enseñar
+     el `detail` crudo.
+   - **El lock es de Postgres, no del proceso.** El `asyncio.Lock` anterior
+     vivía en el proceso del bot y no coordinaba nada con el de la API. Un
+     *advisory lock* sobre un entero fijo sí cruza procesos, y no necesita
+     tabla ni migración.
+   - **La mutación invalida el histórico, no lo parchea.** El análisis del día
+     se sobrescribe, así que añadir a la caché lo que enviamos duplicaría la
+     fila del día en pantalla.
+   - **Sin reintento automático.** Las mutaciones de TanStack Query no
+     reintentan por defecto y aquí se deja así a propósito: un reintento son
+     otros 30-40 s de Gemini y cuota gastada por un fallo que probablemente no
+     sea transitorio.
+   - **El estado de carga se cuenta con palabras.** Con una espera de medio
+     minuto, deshabilitar el botón y nada más se lee como que la web se ha
+     colgado.
+
+   **Verificación end-to-end (2026-09-02):** backend local (`runserver`) y SPA
+   local contra la Supabase real. `POST /api/analyses` → `200` en **40 s**, y
+   el `GET /api/analyses?limit=20` inmediatamente después devolvió el histórico
+   ya con el análisis nuevo (14.886 → 20.235 bytes), o sea que la invalidación
+   de la caché funciona. El análisis era el del día, que faltaba porque
+   `daily_sync.py` había fallado esa tarde por una causa ajena (se lanzó con el
+   Python del sistema en vez de con el del venv, sin Django instalado).
+
+   **Deuda que hereda el SDD de nube:** el `POST` es **síncrono** — no responde
+   hasta que Gemini contesta, y la medida real fue de 40 s. En local funciona;
+   detrás de un proxy o gateway gestionado, no: muchos cortan la petición entre
+   30 y 60 s, y además cada análisis deja un worker de gunicorn ocupado sin
+   atender nada más. El arreglo estándar es que el `POST` encole y devuelva
+   `202 Accepted` con un id que el cliente consulta (*polling*), lo que exige
+   dónde ejecutar el trabajo (hilo o cola tipo Celery/RQ) y una tabla de
+   estado. No se hace aquí a propósito: la mitad difícil —la exclusión entre
+   procesos— ya está resuelta con el advisory lock.
 7. **Repaso y cierre:** revisar qué comandos quedan solo en Telegram a
    propósito, documentar en la tabla §4 el estado final, y dejar listado lo
    que depende del SDD de nube (dominio, HTTPS, `ALLOWED_HOSTS`, CORS de prod).

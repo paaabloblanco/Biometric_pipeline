@@ -84,3 +84,34 @@ export function useBorrarItem() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nevera"] }),
   });
 }
+
+// --- Lanzar un análisis nuevo (SDD-web fase 6) -----------------------------
+
+/**
+ * `POST /api/analyses`: dispara `run_analysis` con Gemini, igual que
+ * `/analisis` en Telegram.
+ *
+ * Dos cosas la hacen distinta del resto de mutaciones de la app:
+ *
+ * - **Tarda 15-30 s.** La petición es síncrona: no responde hasta que Gemini
+ *   contesta. Por eso la pantalla tiene que enseñar el estado de carga de
+ *   forma prominente y no solo deshabilitar el botón.
+ * - **Puede devolver 409.** Si el bot (otro proceso) ya está analizando, el
+ *   `pg_advisory_lock` de `health_ai/locks.py` rechaza esta segunda llamada.
+ *   No es un error del cliente: es el estado del sistema, y se cuenta como
+ *   tal en la interfaz.
+ *
+ * Al terminar invalida el histórico: el análisis del día se sobrescribe, así
+ * que la lista tiene que releerse en vez de parchearse con lo que enviamos.
+ */
+export function useLanzarAnalisis() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (instruction: string) =>
+      apiFetch<Analysis>("/api/analyses", {
+        method: "POST",
+        body: JSON.stringify(instruction.trim() ? { instruction: instruction.trim() } : {}),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["analyses"] }),
+  });
+}
