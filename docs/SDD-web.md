@@ -281,9 +281,43 @@ siguiente (igual que en el SDD de nevera).
 
 ### Iteración 2 — escrituras
 
-4. **Editar la nevera desde la web.** `PATCH`/`DELETE /api/nevera/items/{id}`
-   + edición/borrado en línea en la tabla. Verificación: editar un item en la
-   web se refleja en `/nevera` de Telegram y en BD.
+4. [código listo, falta prueba e2e] **Editar la nevera desde la web.**
+   `PATCH`/`DELETE /api/nevera/items/{id}` (`api.views.NeveraItemView`) +
+   edición y borrado en línea en la tabla de la SPA. Ninguna lógica nueva: las
+   dos rutas envuelven `nevera.services.edit_item` / `delete_item`, las mismas
+   que usan `/editar` y `/borrar` en Telegram.
+
+   Decisiones de esta fase:
+   - **`PATCH`, no `PUT`.** La actualización es *parcial*: el cuerpo lleva solo
+     los campos que cambian, y el frontend calcula ese delta antes de enviar.
+     Con `PUT` (reemplazo del recurso completo) la web pisaría cualquier cambio
+     que el bot hubiera hecho entre la carga de la tabla y el guardado.
+   - **`cantidad` y `unidad` viajan juntas.** El servicio las convierte a la
+     unidad base a la vez (`to_base`), así que mandar la unidad sola
+     reinterpretaría la cantidad en otra escala: 500 g pasarían a ser 500 kg.
+     Se rechaza con 400.
+   - **409 en colisión con `unique_nombre_unidad`.** Renombrar un item al
+     nombre de otro que ya existe en la misma unidad es un conflicto con el
+     estado del recurso, no una petición mal formada. Sin capturar el
+     `IntegrityError` sería un 500 y parecería un fallo del servidor.
+   - **La entrada es un `Serializer` pelado, no un `ModelSerializer`.** Un
+     `ModelSerializer` sabría guardar solo, y guardar salteándose
+     `services.py` metería en la BD datos con una forma distinta a la que mete
+     el bot. La validación se queda en la API; la escritura, en el servicio.
+   - **Errores con forma única `{"detail": "..."}`.** DRF devolvería
+     `{"campo": ["..."]}`; se aplana para que el cliente del frontend tenga un
+     solo sitio del que leer el mensaje.
+   - **La caché se invalida, no se parchea.** Las mutaciones de TanStack Query
+     invalidan la query `nevera` al terminar. Cuesta una petición extra y a
+     cambio la tabla enseña lo que el servidor guardó de verdad —que casi
+     nunca es literalmente lo enviado, porque el nombre se normaliza y la
+     unidad se convierte.
+
+   Verificado con 14 tests (`api/tests/test_write_endpoints.py`, contra la
+   Supabase real, patrón de centinela + limpieza en `tearDown`) y el build y
+   los tests del frontend en verde. **Pendiente:** la prueba end-to-end de
+   editar un item desde el navegador y verlo reflejado en `/nevera` de
+   Telegram y en la BD.
 5. **Acciones con IA desde la web.** `/api/nevera/parse` + `items`,
    `/api/nevera/suggestions` + `consume`, `/api/analyses` (POST),
    `/api/ofertas/analyze`. Resolver el estado conversacional (§6) y el lock

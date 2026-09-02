@@ -32,6 +32,56 @@ class NeveraItemSerializer(serializers.ModelSerializer):
         ]
 
 
+class NeveraItemUpdateSerializer(serializers.Serializer):
+    """Entrada de `PATCH /api/nevera/items/{id}` (SDD-web fase 4).
+
+    Es un `Serializer` pelado y no un `ModelSerializer` a propósito. Un
+    `ModelSerializer` sabría guardar solo, y guardar es justo lo que esta capa
+    no debe hacer: la escritura pasa por `nevera.services.edit_item`, que
+    normaliza el nombre y convierte `cantidad`/`unidad` a la unidad base. Si
+    aquí escribiéramos el modelo directamente, la web metería en la BD datos
+    con una forma distinta a la que mete el bot, y se acabó la única fuente de
+    verdad.
+
+    Todos los campos son opcionales: PATCH es una actualización *parcial*, así
+    que solo se toca lo que venga. `validated_data` trae únicamente las claves
+    presentes en el cuerpo, que es lo que `edit_item(**cambios)` espera.
+    """
+
+    nombre = serializers.CharField(max_length=200)
+    cantidad = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
+    unidad = serializers.CharField(max_length=20)
+    categoria = serializers.CharField(max_length=50, allow_null=True, allow_blank=True)
+    fecha_caducidad = serializers.DateField(allow_null=True)
+    es_basico = serializers.BooleanField()
+
+    def __init__(self, *args, **kwargs):
+        # Opcionalidad de todos los campos en un único sitio, en vez de repetir
+        # `required=False` seis veces y arriesgarse a olvidarlo en el séptimo.
+        super().__init__(*args, **kwargs)
+        for campo in self.fields.values():
+            campo.required = False
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError("No hay ningún campo que actualizar.")
+        # `cantidad` sin `unidad` significa "ya viene en la unidad base actual"
+        # (contrato de `edit_item`). Cambiar solo la unidad, en cambio, dejaría
+        # la cantidad interpretada en una escala que no le corresponde: 500 g
+        # pasarían a ser 500 kg sin que nadie lo pidiera.
+        if "unidad" in attrs and "cantidad" not in attrs:
+            raise serializers.ValidationError(
+                "Para cambiar la unidad hay que enviar también la cantidad."
+            )
+        # Un <input> vacío del formulario llega como "", pero en la BD la
+        # ausencia de categoría es NULL. Sin esta traducción tendríamos dos
+        # representaciones para lo mismo y los filtros por categoría fallarían
+        # en una de ellas.
+        if attrs.get("categoria") == "":
+            attrs["categoria"] = None
+        return attrs
+
+
 class AnalysisSerializer(serializers.Serializer):
     """`supabase_data.services.get_recent_analyses` devuelve dicts, no modelos."""
 

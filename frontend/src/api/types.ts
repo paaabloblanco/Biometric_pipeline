@@ -9,7 +9,18 @@ export interface NeveraItem {
   fecha_caducidad: string | null; // ISO YYYY-MM-DD
   fecha_añadido: string; // ISO datetime
   origen: string;
+  es_basico: boolean;
 }
+
+/** Cuerpo de PATCH /api/nevera/items/{id}: parcial, solo lo que cambia. */
+export type NeveraItemUpdate = Partial<{
+  nombre: string;
+  cantidad: string;
+  unidad: string;
+  categoria: string | null;
+  fecha_caducidad: string | null;
+  es_basico: boolean;
+}>;
 
 export interface Analysis {
   analysis_date: string;
