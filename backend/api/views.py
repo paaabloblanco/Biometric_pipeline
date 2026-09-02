@@ -24,6 +24,8 @@ from api.serializers import (
     AnalysisRequestSerializer,
     AnalysisSerializer,
     CompraParseRequestSerializer,
+    ConsumeRequestSerializer,
+    ConsumeResponseSerializer,
     DayDetailSerializer,
     ErrorDetailSerializer,
     ItemPropuestoSerializer,
@@ -33,6 +35,8 @@ from api.serializers import (
     NeveraItemUpdateSerializer,
     SeriesSerializer,
     SleepNightSerializer,
+    SuggestionsRequestSerializer,
+    SuggestionsResponseSerializer,
 )
 from supabase_data.services import SERIES_METRICS
 
@@ -455,3 +459,113 @@ class NeveraItemsView(APIView):
         # por eso la respuesta son las filas resultantes, que es lo que el
         # cliente necesita para pintar la tabla ya normalizada.
         return Response(NeveraItemSerializer(creados, many=True).data, status=201)
+
+
+@extend_schema(
+    tags=["Nevera"],
+    summary="Sugiere recetas con lo que hay en la nevera",
+    description=(
+        "Equivale a `/comer` del bot. Cruza el inventario ordenado por caducidad con "
+        "el último análisis de recuperación y pide recetas a Gemini. **No guarda "
+        "nada**: las recetas solo existen en la respuesta. "
+        "Es `POST` y no `GET` aunque sea una consulta: cada llamada gasta una "
+        "petición a Gemini, no es idempotente en coste y no debe cachearse."
+    ),
+    request=SuggestionsRequestSerializer,
+    responses={
+        200: SuggestionsResponseSerializer,
+        400: ErrorDetailSerializer,
+        409: OpenApiResponse(
+            response=ErrorDetailSerializer,
+            description="La nevera está vacía, o al excluir no queda nada.",
+        ),
+        502: OpenApiResponse(
+            response=ErrorDetailSerializer,
+            description="Gemini no devolvió algo interpretable.",
+        ),
+    },
+)
+class NeveraSuggestionsView(APIView):
+    """POST /api/nevera/suggestions — recetas propuestas, sin escribir en BD."""
+
+    def post(self, request):
+        from nevera.services import excluir_por_nombre, get_items_by_expiry
+        from nevera.suggestions import suggest_recipes
+        from supabase_data.services import get_recent_analyses
+
+        entrada = SuggestionsRequestSerializer(data=request.data)
+        if not entrada.is_valid():
+            return Response({"detail": _primer_error(entrada.errors)}, status=400)
+
+        items = get_items_by_expiry()
+        if not items:
+            # 409 y no 404: la nevera existe, es su estado el que impide
+            # atender la petición. Tampoco es un 400: la petición era correcta.
+            return Response({"detail": "La nevera está vacía."}, status=409)
+
+        excluidos: list = []
+        sin_coincidencia: list = []
+        terminos = entrada.validated_data["exclude"]
+        if terminos:
+            items, excluidos, sin_coincidencia = excluir_por_nombre(items, terminos)
+            if not items:
+                return Response(
+                    {"detail": "Al excluir eso no queda nada en la nevera."}, status=409
+                )
+
+        analyses = get_recent_analyses(1)
+        ultimo_analisis = analyses[0] if analyses else None
+
+        try:
+            recetas = suggest_recipes(items, ultimo_analisis)
+        except ValueError as exc:
+            return Response({"detail": f"No se pudo generar una sugerencia: {exc}"}, status=502)
+
+        salida = SuggestionsResponseSerializer(
+            {
+                "recipes": recetas,
+                "excluded": [i.nombre for i in excluidos],
+                # Un término que no casa con nada suele ser una errata. Se
+                # devuelve para avisar, en vez de ignorarlo en silencio: si no,
+                # la receta llegaría con el ingrediente que se quería evitar y
+                # parecería que la web no ha hecho caso.
+                "not_found": sin_coincidencia,
+                "analysis_date": ultimo_analisis["analysis_date"] if ultimo_analisis else None,
+            }
+        )
+        return Response(salida.data)
+
+
+@extend_schema(
+    tags=["Nevera"],
+    summary="Descuenta del inventario los ingredientes de una comida",
+    description=(
+        "Equivale a `/hecho <n>` del bot, pero recibe los ingredientes en el cuerpo en "
+        "vez de un número que apunte a una sugerencia recordada por el servidor. "
+        "Los básicos de despensa no se descuentan (se gestionan por presencia) y los "
+        "ingredientes que ya no estén se devuelven en `no_encontrados`. Ninguna de las "
+        "dos cosas es un error: por eso la respuesta es 200 con el detalle de lo que "
+        "pasó con cada ingrediente."
+    ),
+    request=ConsumeRequestSerializer,
+    responses={200: ConsumeResponseSerializer, 400: ErrorDetailSerializer},
+)
+class NeveraConsumeView(APIView):
+    """POST /api/nevera/consume — resta cantidades del inventario.
+
+    El cliente manda los ingredientes, no "la receta número 2": el servidor no
+    guardó las sugerencias en ningún sitio (misma decisión que el alta, SDD-web
+    §6). No es un agujero de seguridad: quien llega aquí está autenticado como
+    el dueño y ya puede poner cualquier cantidad en cualquier item con el
+    `PATCH` de la fase 4. Este endpoint no le da ningún poder nuevo.
+    """
+
+    def post(self, request):
+        from nevera.services import consume_items
+
+        entrada = ConsumeRequestSerializer(data=request.data)
+        if not entrada.is_valid():
+            return Response({"detail": _primer_error(entrada.errors)}, status=400)
+
+        resultado = consume_items(entrada.validated_data["ingredients"])
+        return Response(ConsumeResponseSerializer(resultado).data)

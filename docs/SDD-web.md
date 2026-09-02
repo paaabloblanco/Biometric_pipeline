@@ -570,6 +570,52 @@ siguiente (igual que en el SDD de nevera).
    refrescándose sola. Item de prueba borrado después con el `DELETE` de la
    fase 4.
 
+   **6.c [hecho y verificado e2e, 2026-09-02] Sugerencias de comida y consumo.**
+   `POST /api/nevera/suggestions` + `POST /api/nevera/consume` y la pantalla
+   `/comer` de la SPA (`routes/Comer.tsx`, pestaña nueva en la barra).
+
+   Decisiones de esta parte:
+   - **Al confirmar se mandan los ingredientes, no "la receta número 2".**
+     Mandar el índice obligaría al servidor a recordar lo que propuso, que es
+     justo el estado del que se libró la 6.b. La objeción —así el cliente
+     decide cuánto se resta de la BD— no se sostiene aquí: quien llega está
+     autenticado como el dueño y desde la fase 4 ya puede poner cualquier
+     cantidad en cualquier item con un `PATCH`. El endpoint no concede ningún
+     poder nuevo. En un sistema multiusuario, o si el descuento tuviera efectos
+     fuera del inventario (facturar, pedir stock), la respuesta sería la
+     contraria: el servidor tendría que derivar las cantidades de algo que él
+     controle.
+   - **`POST` para pedir sugerencias, aunque sea una consulta.** Cada llamada
+     gasta una petición a Gemini: no es idempotente en coste y ningún proxy
+     debe cachearla. Además los términos de exclusión son texto libre y varios,
+     y un `GET` con cuerpo no es una opción.
+   - **`409` si la nevera está vacía** o si al excluir no queda nada. No es un
+     `404` (la nevera existe) ni un `400` (la petición era correcta): es el
+     estado del recurso lo que impide atenderla, mismo criterio que el `409`
+     del lock de análisis.
+   - **`200` aunque falte un ingrediente**, no `404`. Que ya no queden tomates
+     no invalida la comida ni deshace lo que sí se descontó. El detalle va en
+     el cuerpo (`aplicados` / `basicos` / `no_encontrados`) y ninguno de los
+     tres bloques es un error: los básicos no se descuentan a propósito, porque
+     se gestionan por presencia y si no una receta con "sal: 1 ud" borraría la
+     sal del inventario.
+   - **Confirmar una receta borra las demás sugerencias de la pantalla.** Ya no
+     valen: se han gastado ingredientes y las cantidades sobre las que se
+     propusieron no son las que hay ahora.
+   - **Los términos de exclusión que no casan con nada se devuelven en
+     `not_found`** y la pantalla los enseña en rojo. Casi siempre son una
+     errata, y callarlos haría parecer que la exclusión se ignoró.
+
+   Verificado con 12 tests (`api/tests/test_nevera_comer.py`, Gemini
+   sustituido por un doble) que cubren el descuento, la conversión de unidad
+   antes de restar, el borrado al agotarse, los básicos que no se tocan y el
+   rechazo de una unidad desconocida sin escribir nada.
+
+   **Verificación end-to-end (2026-09-02):** `POST /api/nevera/suggestions` →
+   `200` con recetas reales sobre el inventario real, y `POST
+   /api/nevera/consume` → `200` con la nevera descontada y la tabla
+   refrescándose sola.
+
 7. **Repaso y cierre:** revisar qué comandos quedan solo en Telegram a
    propósito, documentar en la tabla §4 el estado final, y dejar listado lo
    que depende del SDD de nube (dominio, HTTPS, `ALLOWED_HOSTS`, CORS de prod).

@@ -4,12 +4,16 @@ import { apiFetch } from "./client";
 import type {
   Analysis,
   DayDetail,
+  ConsumeResult,
+  Ingrediente,
   ItemPropuesto,
   LastDay,
   NeveraItem,
   NeveraItemUpdate,
   Serie,
   SleepNight,
+  Suggestions,
+  SuggestionsRequest,
 } from "./types";
 
 export function useLastDay() {
@@ -144,6 +148,36 @@ export function useAltaItems() {
       apiFetch<NeveraItem[]>("/api/nevera/items", {
         method: "POST",
         body: JSON.stringify({ items }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["nevera"] }),
+  });
+}
+
+// --- Sugerencias de comida y consumo (SDD-web fase 6.c) --------------------
+//
+// Mismo patrón sin estado que el alta: `suggestions` no guarda las recetas en
+// ninguna parte, así que al confirmar se mandan los ingredientes y no un
+// "número de receta" que el servidor tendría que recordar.
+
+/** Paso 1: inventario + último análisis -> recetas. No escribe en la BD. */
+export function useSugerencias() {
+  return useMutation({
+    mutationFn: (body: SuggestionsRequest) =>
+      apiFetch<Suggestions>("/api/nevera/suggestions", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+/** Paso 2: descuenta del inventario los ingredientes de la comida hecha. */
+export function useConsumir() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ingredients: Ingrediente[]) =>
+      apiFetch<ConsumeResult>("/api/nevera/consume", {
+        method: "POST",
+        body: JSON.stringify({ ingredients }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nevera"] }),
   });

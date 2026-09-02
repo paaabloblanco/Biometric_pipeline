@@ -145,6 +145,91 @@ class NeveraItemsCreateSerializer(serializers.Serializer):
     items = ItemPropuestoSerializer(many=True, allow_empty=False)
 
 
+class SuggestionsRequestSerializer(serializers.Serializer):
+    """Cuerpo de `POST /api/nevera/suggestions`.
+
+    `exclude` son los términos de `/comer sin pollo, huevos`. Van en el cuerpo
+    y no en la query string porque son texto libre del usuario y pueden ser
+    varios; y el verbo es POST y no GET aunque sea una consulta, porque cada
+    llamada gasta una petición a Gemini: no es una lectura idempotente ni algo
+    que un proxy deba cachear.
+    """
+
+    exclude = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        required=False,
+        default=list,
+        max_length=20,
+        help_text="Ingredientes a excluir, como en `/comer sin pollo, huevos`.",
+    )
+
+
+class IngredienteSerializer(serializers.Serializer):
+    """Un ingrediente de receta: lo que `consume_items` espera descontar.
+
+    Igual que en el alta, este serializer es a la vez salida (dentro de las
+    recetas propuestas) y entrada (lo que se confirma al marcar hecho).
+    """
+
+    nombre = serializers.CharField(max_length=200)
+    cantidad = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
+    unidad = serializers.CharField(max_length=20)
+
+    def validate_unidad(self, valor):
+        try:
+            to_base(1, valor)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return valor
+
+
+class RecetaSerializer(serializers.Serializer):
+    """Una receta propuesta por Gemini. No se guarda en ningún sitio."""
+
+    nombre = serializers.CharField()
+    descripcion = serializers.CharField(allow_blank=True)
+    ingredientes = IngredienteSerializer(many=True)
+
+
+class SuggestionsResponseSerializer(serializers.Serializer):
+    """Respuesta de `/nevera/suggestions`.
+
+    Incluye los avisos que el bot imprime encima de las recetas: qué se excluyó
+    de verdad y qué término no casó con nada (que casi siempre es una errata, y
+    callarlo haría parecer que la exclusión se ignoró).
+    """
+
+    recipes = RecetaSerializer(many=True)
+    excluded = serializers.ListField(child=serializers.CharField())
+    not_found = serializers.ListField(child=serializers.CharField())
+    analysis_date = serializers.DateField(allow_null=True)
+
+
+class ConsumeRequestSerializer(serializers.Serializer):
+    """Cuerpo de `POST /api/nevera/consume`: lo que se descuenta del inventario."""
+
+    ingredients = IngredienteSerializer(many=True, allow_empty=False)
+
+
+class ConsumoAplicadoSerializer(serializers.Serializer):
+    nombre = serializers.CharField()
+    unidad = serializers.CharField()
+    restante = serializers.FloatField()
+
+
+class ConsumeResponseSerializer(serializers.Serializer):
+    """Respuesta de `/nevera/consume`, tal cual la devuelve `consume_items`.
+
+    Los tres bloques son informativos y ninguno es un error: los básicos de
+    despensa no se descuentan a propósito (se gestionan por presencia), y un
+    "no encontrado" solo significa que ese ingrediente ya no estaba.
+    """
+
+    aplicados = ConsumoAplicadoSerializer(many=True)
+    basicos = serializers.ListField(child=serializers.DictField())
+    no_encontrados = serializers.ListField(child=serializers.DictField())
+
+
 class AnalysisSerializer(serializers.Serializer):
     """`supabase_data.services.get_recent_analyses` devuelve dicts, no modelos."""
 

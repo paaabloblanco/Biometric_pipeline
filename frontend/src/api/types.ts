@@ -37,6 +37,44 @@ export interface ItemPropuesto {
   es_basico: boolean;
 }
 
+/** Un ingrediente de receta. Es a la vez salida (dentro de una receta
+ *  propuesta) y entrada de POST /api/nevera/consume. */
+export interface Ingrediente {
+  nombre: string;
+  cantidad: string; // DecimalField: viaja como string
+  unidad: string;
+}
+
+export interface Receta {
+  nombre: string;
+  descripcion: string;
+  ingredientes: Ingrediente[];
+}
+
+export interface SuggestionsRequest {
+  /** Términos de `/comer sin pollo, huevos`. */
+  exclude?: string[];
+}
+
+/** Respuesta de POST /api/nevera/suggestions. `not_found` son los términos de
+ *  exclusión que no casaron con nada: casi siempre una errata, y hay que
+ *  avisar o parece que la exclusión se ignoró. */
+export interface Suggestions {
+  recipes: Receta[];
+  excluded: string[];
+  not_found: string[];
+  analysis_date: string | null;
+}
+
+/** Respuesta de POST /api/nevera/consume. Ninguno de los tres bloques es un
+ *  error: los básicos no se descuentan a propósito y un "no encontrado" solo
+ *  significa que ese ingrediente ya no estaba. */
+export interface ConsumeResult {
+  aplicados: { nombre: string; unidad: string; restante: number }[];
+  basicos: { nombre: string; unidad: string }[];
+  no_encontrados: { nombre: string; cantidad: string; unidad: string }[];
+}
+
 export interface Analysis {
   analysis_date: string;
   user_instruction: string | null;

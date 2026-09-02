@@ -17,9 +17,11 @@ from api.views import (
     HealthLastDayView,
     HealthSeriesView,
     HealthSleepNightView,
+    NeveraConsumeView,
     NeveraItemsView,
     NeveraItemView,
     NeveraParseView,
+    NeveraSuggestionsView,
     NeveraView,
 )
 
@@ -36,6 +38,8 @@ urlpatterns = [
     path("nevera", NeveraView.as_view(), name="nevera"),
     path("nevera/parse", NeveraParseView.as_view(), name="nevera-parse"),
     path("nevera/items", NeveraItemsView.as_view(), name="nevera-items"),
+    path("nevera/suggestions", NeveraSuggestionsView.as_view(), name="nevera-suggestions"),
+    path("nevera/consume", NeveraConsumeView.as_view(), name="nevera-consume"),
     path("nevera/items/<int:item_id>", NeveraItemView.as_view(), name="nevera-item"),
     # Documentación (ver api/docs.py). Requiere sesión de admin, no JWT.
     path("schema/", SchemaView.as_view(), name="schema"),
