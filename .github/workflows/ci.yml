@@ -40,6 +40,12 @@ jobs:
       - name: mypy
         run: mypy .
 
+      # Comprobaciones de configuración de Django (system checks). No toca la
+      # BD: solo valida que los settings son coherentes, incluida la del modo
+      # del pooler que exige el advisory lock (health_ai/checks.py).
+      - name: django check
+        run: python manage.py check
+
   tests:
     name: tests (BD real)
     runs-on: ubuntu-latest

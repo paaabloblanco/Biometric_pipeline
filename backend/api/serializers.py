@@ -7,6 +7,7 @@ JSON estable para el frontend.
 
 from rest_framework import serializers
 
+from health_ai.config import MAX_INSTRUCTION_CHARS
 from nevera.models import NeveraItem
 
 
@@ -88,6 +89,22 @@ class AnalysisSerializer(serializers.Serializer):
     analysis_date = serializers.DateField()
     user_instruction = serializers.CharField(allow_null=True)
     analysis_text = serializers.CharField()
+
+
+class AnalysisRequestSerializer(serializers.Serializer):
+    """Cuerpo de `POST /api/analyses`.
+
+    `instruction` es opcional: sin ella se usa la de por defecto, igual que
+    `/analisis` sin argumentos en Telegram. Va acotada en longitud porque el
+    texto se incrusta en el prompt que se manda a Gemini.
+    """
+
+    instruction = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=MAX_INSTRUCTION_CHARS,
+        help_text="Qué quieres que analice. Si se omite, se usa la instrucción por defecto.",
+    )
 
 
 # --- Formas de solo documentación ------------------------------------------

@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.serializers import (
+    AnalysisRequestSerializer,
     AnalysisSerializer,
     DayDetailSerializer,
     ErrorDetailSerializer,
@@ -214,6 +215,65 @@ class AnalysesView(APIView):
             limit = max(1, min(MAX_ANALYSES, limit))
         analyses = get_recent_analyses(limit)
         return Response(AnalysisSerializer(analyses, many=True).data)
+
+    @extend_schema(
+        tags=["Análisis"],
+        summary="Lanza un análisis nuevo con Gemini",
+        description=(
+            "Equivale al comando `/analisis` del bot. **Tarda 15-30 s**: la respuesta "
+            "no llega hasta que Gemini contesta. Sobrescribe el análisis del día si ya "
+            "existía. "
+            "Devuelve **409** si el bot o esta misma API ya están analizando. La "
+            "exclusión se hace con un *advisory lock* de Postgres, así que vale entre "
+            "procesos distintos (ver `health_ai/locks.py`)."
+        ),
+        request=AnalysisRequestSerializer,
+        responses={
+            200: AnalysisSerializer,
+            400: ErrorDetailSerializer,
+            409: OpenApiResponse(
+                response=ErrorDetailSerializer,
+                description="Ya hay un análisis en curso en otro proceso.",
+            ),
+        },
+    )
+    def post(self, request):
+        from health_ai.config import DEFAULT_INSTRUCTION
+        from health_ai.pruebas import AnalysisInProgress, run_analysis
+
+        entrada = AnalysisRequestSerializer(data=request.data)
+        if not entrada.is_valid():
+            return Response({"detail": _primer_error(entrada.errors)}, status=400)
+
+        # Sin instrucción (o en blanco) se usa la de por defecto, igual que
+        # `/analisis` sin argumentos en Telegram: las dos interfaces tienen que
+        # producir el mismo análisis ante la misma petición vacía.
+        instruccion = entrada.validated_data.get("instruction", "").strip() or DEFAULT_INSTRUCTION
+
+        try:
+            resultado = run_analysis(instruccion, send_to_api=True)
+        except AnalysisInProgress:
+            # 409 Conflict y no 429: el cliente no ha hecho nada mal ni se ha
+            # pasado de cuota, es que el estado actual del sistema es
+            # incompatible con lo que pide. Puede que el conflicto ni siquiera
+            # lo haya causado él, sino el bot.
+            return Response(
+                {"detail": "Ya hay un análisis en curso, espera a que termine."},
+                status=409,
+            )
+
+        # 200 y no 201: llamar dos veces el mismo día no crea dos análisis,
+        # sobrescribe el mismo. Un 201 prometería un recurso nuevo cada vez,
+        # con su propia URL, y aquí no lo hay.
+        return Response(
+            AnalysisSerializer(
+                {
+                    "analysis_date": resultado["date"],
+                    "user_instruction": instruccion,
+                    "analysis_text": resultado["response"],
+                }
+            ).data
+        )
 
 
 @extend_schema(

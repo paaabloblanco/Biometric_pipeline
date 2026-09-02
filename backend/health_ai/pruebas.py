@@ -22,6 +22,7 @@ import django
 
 django.setup()  # idempotente: no-op si ya está inicializado
 
+from health_ai.config import DEFAULT_INSTRUCTION  # noqa: F401  (reexport por comodidad)
 from health_ai.locks import LOCK_ANALISIS_DIARIO, LockOcupado, advisory_lock
 from supabase_data.services import get_last_day_data, get_recent_analyses, save_analysis
 
@@ -135,11 +136,17 @@ def run_analysis(instruccion_usuario: str, send_to_api: bool = True) -> dict[str
 
     Devuelve un dict con keys: 'prompt' y, si send_to_api es True, 'response'.
 
-    Lanza `AnalysisInProgress` si otro proceso está analizando ahora mismo. El
-    lock se coge **aquí dentro** y no en cada llamador (bot, API, CLI) por dos
-    razones: ninguno puede olvidarse de cogerlo, y se garantiza que cogerlo y
-    soltarlo ocurren en el mismo hilo —el bot llama a esta función con
-    `asyncio.to_thread`, y la conexión de Django es thread-local—.
+    Lanza `AnalysisInProgress` si otro proceso está analizando ahora mismo.
+
+    El lock se coge **aquí dentro** y no en cada llamador (bot, API, CLI):
+
+    1. Ninguno puede olvidarse. "No analizar dos veces a la vez" pasa a ser una
+       propiedad de esta función en vez de una convención que sus usuarios
+       tienen que recordar, y mañana habrá un llamador más.
+    2. Hace imposible por construcción el error de repartir el lock entre dos
+       hilos distintos (ver la nota de `advisory_lock`).
+    3. Evita una consulta síncrona a la BD dentro del bucle de eventos del
+       bot, que lo congelaría entero mientras dura.
     """
     # Solo se protege la llamada de verdad a Gemini. Con `send_to_api=False`
     # (el CLI, que solo imprime el prompt) no se gasta cuota ni se escribe en
@@ -164,7 +171,10 @@ def _run_analysis(instruccion_usuario: str, send_to_api: bool) -> dict[str, Any]
 
     prompt = build_prompt(instruccion_usuario, datos_pretty, historial)
 
-    result: dict[str, Any] = {"prompt": prompt}
+    # `date` viaja en la respuesta para que quien llame sepa a qué día se
+    # atribuyó el análisis sin tener que releerlo de la BD. Es la fecha del
+    # último día con datos, que no tiene por qué ser hoy.
+    result: dict[str, Any] = {"date": day_data["date"], "prompt": prompt}
 
     if send_to_api:
         response_text = send_prompt_to_gemini(prompt)
