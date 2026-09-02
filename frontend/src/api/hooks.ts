@@ -10,6 +10,7 @@ import type {
   LastDay,
   NeveraItem,
   NeveraItemUpdate,
+  Recomendacion,
   Serie,
   SleepNight,
   Suggestions,
@@ -180,5 +181,18 @@ export function useConsumir() {
         body: JSON.stringify({ ingredients }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nevera"] }),
+  });
+}
+
+// --- Ofertas del supermercado (SDD-web fase 6.d) ---------------------------
+
+/** Cruza el texto de la gazetka con la nevera. No escribe nada. */
+export function useAnalizarOfertas() {
+  return useMutation({
+    mutationFn: (text: string) =>
+      apiFetch<Recomendacion[]>("/api/ofertas/analyze", {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      }),
   });
 }

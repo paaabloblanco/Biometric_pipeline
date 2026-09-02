@@ -39,6 +39,9 @@ export default function Layout() {
             <NavLink to="/comer" className={linkClass}>
               Comer
             </NavLink>
+            <NavLink to="/comprar" className={linkClass}>
+              Ofertas
+            </NavLink>
           </nav>
           <button
             onClick={logout}

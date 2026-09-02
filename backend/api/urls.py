@@ -23,6 +23,7 @@ from api.views import (
     NeveraParseView,
     NeveraSuggestionsView,
     NeveraView,
+    OfertasAnalyzeView,
 )
 
 app_name = "api"
@@ -40,6 +41,7 @@ urlpatterns = [
     path("nevera/items", NeveraItemsView.as_view(), name="nevera-items"),
     path("nevera/suggestions", NeveraSuggestionsView.as_view(), name="nevera-suggestions"),
     path("nevera/consume", NeveraConsumeView.as_view(), name="nevera-consume"),
+    path("ofertas/analyze", OfertasAnalyzeView.as_view(), name="ofertas-analyze"),
     path("nevera/items/<int:item_id>", NeveraItemView.as_view(), name="nevera-item"),
     # Documentación (ver api/docs.py). Requiere sesión de admin, no JWT.
     path("schema/", SchemaView.as_view(), name="schema"),

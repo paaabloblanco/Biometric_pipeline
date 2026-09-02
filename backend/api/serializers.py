@@ -9,6 +9,7 @@ from rest_framework import serializers
 
 from health_ai.config import MAX_INSTRUCTION_CHARS
 from nevera.models import NeveraItem
+from nevera.ofertas import MAX_OFERTAS_CHARS
 from nevera.parsing import MAX_COMPRA_CHARS
 from nevera.units import to_base
 
@@ -228,6 +229,28 @@ class ConsumeResponseSerializer(serializers.Serializer):
     aplicados = ConsumoAplicadoSerializer(many=True)
     basicos = serializers.ListField(child=serializers.DictField())
     no_encontrados = serializers.ListField(child=serializers.DictField())
+
+
+class OfertasRequestSerializer(serializers.Serializer):
+    """Cuerpo de `POST /api/ofertas/analyze`: la gazetka transcrita."""
+
+    text = serializers.CharField(
+        max_length=MAX_OFERTAS_CHARS,
+        trim_whitespace=True,
+        help_text="Texto de las ofertas, tal cual se copia de la app del supermercado.",
+    )
+
+
+class RecomendacionSerializer(serializers.Serializer):
+    """Una oferta que merece la pena, según Gemini. No se guarda en ningún sitio."""
+
+    nombre = serializers.CharField()
+    motivo = serializers.CharField(required=False, allow_blank=True, default="")
+    # `precio` es texto y no un número a propósito: llega tal cual aparece en
+    # la oferta ("5,99 zł", "2x1", "-30%"), y convertirlo a decimal obligaría a
+    # decidir divisa, formato y qué hacer con las promociones que no son un
+    # precio. Aquí solo se enseña.
+    precio = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
 
 
 class AnalysisSerializer(serializers.Serializer):

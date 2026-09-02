@@ -5,6 +5,7 @@ import Layout from "./components/Layout";
 import { useAuth } from "./lib/auth";
 import Analyses from "./routes/Analyses";
 import Comer from "./routes/Comer";
+import Comprar from "./routes/Comprar";
 import Dashboard from "./routes/Dashboard";
 import DayDetail from "./routes/DayDetail";
 import Login from "./routes/Login";
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/analisis" element={<Analyses />} />
         <Route path="/nevera" element={<Nevera />} />
         <Route path="/comer" element={<Comer />} />
+        <Route path="/comprar" element={<Comprar />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

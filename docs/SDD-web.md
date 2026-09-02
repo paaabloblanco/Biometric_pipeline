@@ -115,7 +115,7 @@ frontend/
 - **Deploy:** proyecto de Vercel con Root Directory `frontend`, build `vite build`,
   variable `VITE_API_BASE_URL` con la URL del backend.
 
-## 4. Endpoints (primera iteración)
+## 4. Endpoints
 
 | Método | Ruta | Servicio Django que envuelve | Equivale a |
 |---|---|---|---|
@@ -141,6 +141,28 @@ Los cuatro servicios de datos nuevos viven en `supabase_data/services.py`:
 la página de un día, `get_sleep_night` reconstruye la noche para el hipnograma
 y `build_day_summary` calcula los KPIs de la cabecera. El resto de rutas son
 envoltorios directos de servicios que ya usaba el bot.
+
+### 4.1 Reparto por canal (estado final de la iteración)
+
+Cada función existe donde tiene sentido usarla, no en los dos sitios por
+simetría. Esta tabla es la fuente de verdad de qué hay en cada canal.
+
+| Función | Telegram | Web | Por qué |
+|---|---|---|---|
+| Ver datos del día (`/hoy`) | ✅ | ✅ | La web además da hipnograma, gráficas y detalle por día |
+| Histórico de análisis (`/historial`) | ✅ | ✅ | |
+| Lanzar análisis (`/analisis`) | ✅ | ✅ | Coordinados por `pg_advisory_lock` |
+| Ver nevera (`/nevera`) | ✅ | ✅ | |
+| Alta con IA (`/anadir` + `/confirmar`) | ✅ | ✅ | En la web se pueden **corregir** las propuestas antes de guardar; en el bot es confirmar o cancelar |
+| Editar / borrar item (`/editar`, `/borrar`) | ✅ | ✅ | La web edita en línea sin recordar ids |
+| Sugerencias y consumo (`/comer` + `/hecho`) | ✅ | ✅ | |
+| Ofertas (`/comprar`) | ✅ | ✅ | Nace para la web: pegar el folleto largo (§7-G) |
+| Análisis diario automático | ✅ | ❌ | Es una **notificación**: llega sola, sin que nadie abra nada. Una web no puede empujar nada a nadie sin push notifications, que es infraestructura entera para un solo usuario. `daily_sync.py` lo seguirá mandando por Telegram |
+| `/start`, `/help`, `/cancelar` | ✅ | ❌ | Andamiaje del propio bot: en una interfaz gráfica no significan nada (la ayuda es la pantalla y cancelar es cerrar el formulario) |
+
+Lo que la web **no** hereda del bot no es deuda: es la parte que solo tiene
+sentido en un chat. Y al revés, la web hace cosas que el bot no puede
+(gráficas, hipnograma, edición en línea) porque un chat no es un lienzo.
 
 ## 5. Autenticación
 
@@ -168,24 +190,31 @@ a la vista. La versión mínima segura es la de abajo (~1-2 h en fase 1).
 
 ## 6. Riesgos / notas
 
-- **`DEBUG = True` y `SECRET_KEY` en `core/settings.py`.** Antes de exponer
+- **`DEBUG = True` y `SECRET_KEY` en `core/settings.py`.** Mitigado en parte
+  (settings por entorno, fase 1); lo que queda es de despliegue y está
+  listado en el §9. Enunciado original: antes de exponer
   nada públicamente hay que separar settings de dev y prod, `DEBUG=False`,
   `ALLOWED_HOSTS` real. Esto se solapa con el SDD de nube; aquí solo se
   señala como bloqueante.
-- **Llamadas a Gemini desde la web sin lock compartido.** `run_analysis` tiene
+- ~~**Llamadas a Gemini desde la web sin lock compartido.**~~ **Resuelto en
+  la fase 6.a** con `pg_advisory_lock` (`health_ai/locks.py`). Enunciado
+  original: `run_analysis` tiene
   un `asyncio.Lock` que vive en el proceso del bot. La API es otro proceso: su
   propio lock no coordina con el del bot. Riesgo de dos análisis simultáneos
   (bot + web) gastando cuota. Opción: mover el lock a un lock de BD
   (`select_for_update` sobre una fila de control) o aceptar el riesgo como se
   aceptó en el SDD de nevera. _(decisión §7-C)_
-- **Estado conversacional del bot vs. sin estado en la web.** Hay que
+- ~~**Estado conversacional del bot vs. sin estado en la web.**~~ **Resuelto
+  en las fases 6.b y 6.c**: el estado intermedio lo tiene el cliente y vuelve
+  entero en la segunda petición; el servidor no guarda nada. Enunciado
+  original: hay que
   refactorizar `/anadir` y `/comer` para que la lógica de "parsear" y
   "confirmar/consumir" sea llamable por separado desde la API sin depender de
   `_pending_altas` / `_pending_recetas`. Los servicios ya lo permiten
   (`parse_compra_text` + `add_items` son funciones distintas); es sobre todo
   no meter el estado en la capa de API.
 - **Dos frontends que mantener.** Cada comando nuevo hay que decidir si va en
-  web, en bot, o en ambos. Mitigación: la tabla del §4 es la fuente de verdad
+  web, en bot, o en ambos. Mitigación: la tabla del §4.1 es la fuente de verdad
   de qué existe en cada canal; no toda feature tiene que estar en los dos.
 - **CSRF vs JWT.** Con JWT en header `Authorization` y sin cookies de sesión
   para la API, el middleware CSRF de Django no aplica a esos endpoints (DRF lo
@@ -616,6 +645,76 @@ siguiente (igual que en el SDD de nevera).
    /api/nevera/consume` → `200` con la nevera descontada y la tabla
    refrescándose sola.
 
-7. **Repaso y cierre:** revisar qué comandos quedan solo en Telegram a
-   propósito, documentar en la tabla §4 el estado final, y dejar listado lo
-   que depende del SDD de nube (dominio, HTTPS, `ALLOWED_HOSTS`, CORS de prod).
+   **6.d [hecho, pendiente de verificación e2e] Ofertas del supermercado.**
+   `POST /api/ofertas/analyze` y la pantalla `/comprar` de la SPA. Es la única
+   función del proyecto que nace pensada para la web y no para el bot
+   (decisión §7-G).
+
+   Decisiones de esta parte:
+   - **`precio` viaja como texto, no como número.** Llega tal cual aparece en
+     la oferta y muchas promociones no son un precio: `2x1`, `-30%`,
+     `5,99 zł/kg`. Convertirlo a decimal obligaría a decidir divisa, formato y
+     qué hacer con lo que no es una cifra, a cambio de nada: aquí solo se
+     muestra. Si algún día hay que ordenar por precio o calcular ahorro, ese
+     será el momento de parsearlo, y con reglas explícitas.
+   - **Lista vacía = `200`, no `404`.** "Ninguna oferta compensa" es una
+     respuesta del análisis, no la ausencia de un recurso. La pantalla lo dice
+     con palabras en vez de quedarse en blanco, que se leería como un fallo.
+   - **La nevera vacía no bloquea**, al contrario que en las sugerencias: sin
+     inventario todavía se pueden recomendar ofertas buenas de básicos, pero no
+     se puede cocinar con la nevera vacía. Por eso allí hay `409` y aquí no.
+   - **Tope de 12.000 caracteres** (`MAX_OFERTAS_CHARS`), frente a los 4.000
+     del alta: una lista de la compra son unas líneas y una gazetka transcrita
+     son varias páginas.
+
+   Verificado con 7 tests (`api/tests/test_ofertas.py`, Gemini sustituido por
+   un doble). `ruff`, `mypy` y los 185 tests del backend en verde; `tsc`,
+   `vite build` y `vitest` del frontend también.
+
+   **Pendiente:** la prueba en pantalla con una gazetka real. Hasta que esté,
+   la fase 6 no se da por cerrada.
+
+7. **Repaso y cierre.** Reparto final por canal en la tabla del §4.1 y
+   herencia para el SDD de nube en el §9. Pendiente de cerrar cuando la 6.d
+   tenga su verificación en pantalla.
+
+## 9. Lo que hereda el SDD de nube
+
+Todo esto se ha dejado a propósito fuera de este SDD porque depende de dónde se
+despliegue, no de cómo esté escrita la aplicación. Listado aquí para que el
+siguiente documento no empiece de cero.
+
+**Bloqueantes para exponer nada públicamente:**
+
+- **Hosting del backend.** Hoy es `runserver` en local; la SPA en Vercel solo
+  se probó contra un túnel `cloudflared` de usar y tirar. Sin backend alojado
+  no hay web de verdad.
+- **`DJANGO_ENV=prod` de verdad**: `DEBUG=False`, `SECRET_KEY` desde el
+  entorno (hay historial de una filtrada: no repetirlo), `ALLOWED_HOSTS` con el
+  dominio real y `CORS_ALLOWED_ORIGINS` con el de Vercel, sin los extras de dev.
+- **HTTPS y dominio.** Con JWT en `localStorage`, todo el tráfico tiene que ir
+  cifrado o el token viaja a la vista.
+- **Secretos**: `.env` no se despliega. Hacen falta variables de entorno del
+  proveedor o un gestor de secretos (Key Vault, Secret Manager).
+
+**Deuda técnica conocida, con nombre:**
+
+- **`POST /api/analyses` es síncrono.** Medido: 40 s. Muchos proxies y gateways
+  gestionados cortan entre 30 y 60 s, y además cada análisis deja un worker
+  ocupado. El arreglo estándar es encolar y devolver `202 Accepted` con un id
+  que el cliente consulta; exige dónde ejecutar el trabajo (hilo o cola tipo
+  Celery/RQ) y una tabla de estado. La mitad difícil —la exclusión entre
+  procesos— ya está resuelta con el advisory lock. Lo mismo aplica, en menor
+  medida, a los otros endpoints que llaman a Gemini (`parse`, `suggestions`,
+  `ofertas/analyze`), que tardan segundos y no medio minuto.
+- **`daily_sync.py` termina con código 0 aunque falle el análisis.** El
+  `try/except` de `push_daily_analysis` es deliberado (un fallo del análisis no
+  debe perder los datos ya sincronizados), pero desatendido en la nube ese `0`
+  es una mentira que ningún monitor detectaría. Hace falta separar "la sync fue
+  bien" de "todo fue bien" en el código de salida o en las métricas.
+- **No hay BD de test.** Los tests corren contra la Supabase real con prefijos
+  centinela. Funciona con un desarrollador; en CI compartida o con dos personas
+  a la vez, no.
+- **El bot es un proceso de long polling en el portátil.** Para que viva en la
+  nube hay que decidir entre seguir con polling en un contenedor siempre
+  encendido o pasar a webhooks.

@@ -9,6 +9,12 @@ import re
 from health_ai.pruebas import send_prompt_to_gemini
 from nevera.suggestions import format_inventario
 
+# Tope de longitud del texto de ofertas que llega por la API. Más holgado que
+# el del alta (`MAX_COMPRA_CHARS`) porque una gazetka transcrita entera son
+# varias páginas, mientras que una lista de la compra son unas líneas. Mismo
+# motivo para acotarlo: el texto se incrusta en el prompt que va a Gemini.
+MAX_OFERTAS_CHARS = 12000
+
 PROMPT_TEMPLATE = (
     "Eres un asesor de compra para un deportista que sigue una dieta de "
     "comida real (whole foods) y antiinflamatoria. Te paso el texto de unas "

@@ -33,6 +33,8 @@ from api.serializers import (
     NeveraItemsCreateSerializer,
     NeveraItemSerializer,
     NeveraItemUpdateSerializer,
+    OfertasRequestSerializer,
+    RecomendacionSerializer,
     SeriesSerializer,
     SleepNightSerializer,
     SuggestionsRequestSerializer,
@@ -569,3 +571,59 @@ class NeveraConsumeView(APIView):
 
         resultado = consume_items(entrada.validated_data["ingredients"])
         return Response(ConsumeResponseSerializer(resultado).data)
+
+
+@extend_schema(
+    tags=["Ofertas"],
+    summary="Cruza las ofertas del supermercado con la nevera",
+    description=(
+        "Equivale a `/comprar` del bot. Recibe el texto de una gazetka transcrita y "
+        "devuelve qué ofertas merece la pena aprovechar según lo que ya hay en la "
+        "nevera. No guarda nada. Una lista vacía es una respuesta válida: significa "
+        "que ninguna oferta compensa ahora mismo."
+    ),
+    request=OfertasRequestSerializer,
+    responses={
+        200: RecomendacionSerializer(many=True),
+        400: ErrorDetailSerializer,
+        502: OpenApiResponse(
+            response=ErrorDetailSerializer,
+            description="Gemini no devolvió algo interpretable.",
+        ),
+    },
+)
+class OfertasAnalyzeView(APIView):
+    """POST /api/ofertas/analyze — recomendaciones de compra, sin escribir en BD.
+
+    De todas las funciones del proyecto, esta es la que mejor encaja en la web
+    y peor en el bot (decisión §7-G): la entrada es un bloque largo de texto
+    pegado del folleto, que un `<textarea>` acepta de una vez y Telegram parte
+    en varios mensajes.
+    """
+
+    def post(self, request):
+        from nevera.ofertas import analizar_ofertas
+        from nevera.services import list_all
+
+        entrada = OfertasRequestSerializer(data=request.data)
+        if not entrada.is_valid():
+            return Response({"detail": _primer_error(entrada.errors)}, status=400)
+
+        # La nevera vacía no es un impedimento aquí, al revés que en las
+        # sugerencias: sin inventario aún se pueden recomendar ofertas buenas
+        # de productos básicos. `analizar_ofertas` ya contempla la lista vacía.
+        items = list_all()
+
+        try:
+            recomendaciones = analizar_ofertas(entrada.validated_data["text"], items)
+        except ValueError as exc:
+            return Response({"detail": f"No se pudo analizar las ofertas: {exc}"}, status=502)
+
+        salida = RecomendacionSerializer(data=recomendaciones, many=True)
+        if not salida.is_valid():
+            detalle = _primer_error(salida.errors)
+            return Response(
+                {"detail": f"Gemini devolvió recomendaciones no válidas: {detalle}"},
+                status=502,
+            )
+        return Response(salida.validated_data)

@@ -75,6 +75,16 @@ export interface ConsumeResult {
   no_encontrados: { nombre: string; cantidad: string; unidad: string }[];
 }
 
+/** Una oferta que merece la pena, según Gemini.
+ *
+ *  `precio` es texto y no un número a propósito: llega tal cual aparece en la
+ *  oferta ("5,99 zł", "2x1", "-30%"), y muchas promociones no son un precio. */
+export interface Recomendacion {
+  nombre: string;
+  motivo: string;
+  precio: string | null;
+}
+
 export interface Analysis {
   analysis_date: string;
   user_instruction: string | null;
