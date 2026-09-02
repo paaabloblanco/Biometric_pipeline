@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from contextlib import nullcontext
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ import django
 
 django.setup()  # idempotente: no-op si ya está inicializado
 
+from health_ai.locks import LOCK_ANALISIS_DIARIO, LockOcupado, advisory_lock
 from supabase_data.services import get_last_day_data, get_recent_analyses, save_analysis
 
 HISTORY_DAYS = 7
@@ -114,11 +116,45 @@ def send_prompt_to_gemini(prompt: str) -> str:
     return response.text
 
 
+class AnalysisInProgress(LockOcupado):
+    """Ya hay un análisis en curso en otro proceso (el bot o la API web).
+
+    Es una excepción y no un valor de retorno a propósito: en Python nada
+    obliga a mirar lo que devuelve una función, así que un `{"skipped": True}`
+    que alguien no comprobara se manifestaría como un mensaje vacío para el
+    usuario, lejos de la causa. Además, una excepción con nombre propio deja
+    sitio a un segundo motivo el día que lo haya; un booleano, no.
+
+    Cada interfaz la traduce a su medio: la API a un 409 Conflict, el bot a su
+    mensaje de "espera a que termine".
+    """
+
+
 def run_analysis(instruccion_usuario: str, send_to_api: bool = True) -> dict[str, Any]:
     """Construye el prompt (con historial de análisis previos) y opcionalmente lo envía a la API.
 
     Devuelve un dict con keys: 'prompt' y, si send_to_api es True, 'response'.
+
+    Lanza `AnalysisInProgress` si otro proceso está analizando ahora mismo. El
+    lock se coge **aquí dentro** y no en cada llamador (bot, API, CLI) por dos
+    razones: ninguno puede olvidarse de cogerlo, y se garantiza que cogerlo y
+    soltarlo ocurren en el mismo hilo —el bot llama a esta función con
+    `asyncio.to_thread`, y la conexión de Django es thread-local—.
     """
+    # Solo se protege la llamada de verdad a Gemini. Con `send_to_api=False`
+    # (el CLI, que solo imprime el prompt) no se gasta cuota ni se escribe en
+    # la BD, así que coger el lock solo serviría para bloquear un análisis real
+    # que estuviera en curso. `nullcontext` es un gestor de contexto que no
+    # hace nada: evita duplicar el cuerpo de la función en un if/else.
+    guarda = (
+        advisory_lock(LOCK_ANALISIS_DIARIO, AnalysisInProgress) if send_to_api else nullcontext()
+    )
+    with guarda:
+        return _run_analysis(instruccion_usuario, send_to_api)
+
+
+def _run_analysis(instruccion_usuario: str, send_to_api: bool) -> dict[str, Any]:
+    """El trabajo en sí, ya con el lock cogido (o sin él, si no se envía)."""
     day_data = get_last_day_data()
     target_date = date.fromisoformat(day_data["date"])
     datos_pretty = json.dumps(day_data, ensure_ascii=False, indent=2, default=str)

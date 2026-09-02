@@ -26,8 +26,10 @@ def _args(context: ContextTypes.DEFAULT_TYPE) -> list[str]:
     return context.args
 
 
-# Un solo análisis de Gemini a la vez (evita gastar cuota por pulsaciones repetidas).
-_analysis_lock = asyncio.Lock()
+# El lock de "un solo análisis a la vez" ya no vive aquí: era un asyncio.Lock
+# in-process y no coordinaba con la API web, que es otro proceso. Ahora es un
+# advisory lock de Postgres que coge `run_analysis` por dentro
+# (health_ai/locks.py), y aquí solo se traduce su excepción a un mensaje.
 
 # Altas de /añadir pendientes de confirmación, por chat_id. Se pierden si el
 # proceso del bot se reinicia (aceptado en el SDD, ver decisión A).
@@ -151,26 +153,29 @@ async def historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def analisis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     instruccion = " ".join(_args(context)).strip() or DEFAULT_INSTRUCTION
 
-    if _analysis_lock.locked():
+    await update.effective_message.reply_text(
+        "Analizando… (~15-30 s). Se sobrescribe el análisis de hoy si ya existía."
+    )
+    await update.effective_chat.send_action(ChatAction.TYPING)
+
+    from health_ai.pruebas import AnalysisInProgress, run_analysis
+
+    # Se intenta y se captura, en vez de preguntar antes si está libre. Un
+    # `if lock.locked()` seguido de cogerlo es una condición de carrera
+    # (check-then-act): entre la comprobación y la toma, el otro proceso puede
+    # colarse. Con `run_analysis` cogiendo el lock por dentro, la comprobación
+    # y la toma son la misma operación atómica de Postgres.
+    try:
+        result = await asyncio.to_thread(run_analysis, instruccion, True)
+    except AnalysisInProgress:
         await update.effective_message.reply_text(
             "Ya hay un análisis en curso, espera a que termine."
         )
         return
-
-    async with _analysis_lock:
-        await update.effective_message.reply_text(
-            "Analizando… (~15-30 s). Se sobrescribe el análisis de hoy si ya existía."
-        )
-        await update.effective_chat.send_action(ChatAction.TYPING)
-
-        from health_ai.pruebas import run_analysis
-
-        try:
-            result = await asyncio.to_thread(run_analysis, instruccion, True)
-        except Exception as exc:
-            log.exception("Fallo en /analisis")
-            await update.effective_message.reply_text(f"No se pudo completar el análisis: {exc}")
-            return
+    except Exception as exc:
+        log.exception("Fallo en /analisis")
+        await update.effective_message.reply_text(f"No se pudo completar el análisis: {exc}")
+        return
 
     await _reply_long(update, result["response"])
 
