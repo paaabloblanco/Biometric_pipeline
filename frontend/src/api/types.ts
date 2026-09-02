@@ -22,6 +22,21 @@ export type NeveraItemUpdate = Partial<{
   es_basico: boolean;
 }>;
 
+/** Un item tal y como lo entendió Gemini, antes de guardarse.
+ *
+ *  Es a la vez la salida de POST /api/nevera/parse y la entrada de
+ *  POST /api/nevera/items: el mismo objeto sale, se edita en pantalla y vuelve.
+ *  Aquí `cantidad`/`unidad` van como las dijo el usuario (1 l), no en la unidad
+ *  base (1000 ml): la conversión la hace el servicio al guardar. */
+export interface ItemPropuesto {
+  nombre: string;
+  cantidad: string; // DecimalField: viaja como string
+  unidad: string;
+  categoria: string | null;
+  fecha_caducidad: string | null; // ISO YYYY-MM-DD
+  es_basico: boolean;
+}
+
 export interface Analysis {
   analysis_date: string;
   user_instruction: string | null;

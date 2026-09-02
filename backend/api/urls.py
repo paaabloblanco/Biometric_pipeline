@@ -2,8 +2,8 @@
 
 Esta capa es al navegador lo que bot/ es a Telegram: interfaz fina, sin lógica
 de negocio. Iteración 1 (solo lectura): auth + endpoints de consulta de salud,
-nevera y análisis. Fase 4: escritura sobre la nevera
-(docs/SDD-web.md §4 y §8).
+nevera y análisis. Fase 4: escritura sobre la nevera;
+fase 6: acciones con IA (docs/SDD-web.md §4 y §8).
 """
 
 from django.urls import path
@@ -17,7 +17,9 @@ from api.views import (
     HealthLastDayView,
     HealthSeriesView,
     HealthSleepNightView,
+    NeveraItemsView,
     NeveraItemView,
+    NeveraParseView,
     NeveraView,
 )
 
@@ -32,6 +34,8 @@ urlpatterns = [
     path("health/sleep-night", HealthSleepNightView.as_view(), name="health-sleep-night"),
     path("analyses", AnalysesView.as_view(), name="analyses"),
     path("nevera", NeveraView.as_view(), name="nevera"),
+    path("nevera/parse", NeveraParseView.as_view(), name="nevera-parse"),
+    path("nevera/items", NeveraItemsView.as_view(), name="nevera-items"),
     path("nevera/items/<int:item_id>", NeveraItemView.as_view(), name="nevera-item"),
     # Documentación (ver api/docs.py). Requiere sesión de admin, no JWT.
     path("schema/", SchemaView.as_view(), name="schema"),

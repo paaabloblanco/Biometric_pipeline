@@ -23,9 +23,12 @@ from rest_framework.views import APIView
 from api.serializers import (
     AnalysisRequestSerializer,
     AnalysisSerializer,
+    CompraParseRequestSerializer,
     DayDetailSerializer,
     ErrorDetailSerializer,
+    ItemPropuestoSerializer,
     LastDaySerializer,
+    NeveraItemsCreateSerializer,
     NeveraItemSerializer,
     NeveraItemUpdateSerializer,
     SeriesSerializer,
@@ -358,3 +361,97 @@ class NeveraItemView(APIView):
         if not delete_item(item_id):
             return Response({"detail": "No existe ese item."}, status=404)
         return Response(status=204)
+
+
+@extend_schema(
+    tags=["Nevera"],
+    summary="Interpreta un texto de compra con Gemini (no guarda nada)",
+    description=(
+        "Primer paso del alta en dos tiempos. Equivale a `/anadir` en Telegram, con "
+        "una diferencia importante: **no guarda nada ni recuerda nada**. Devuelve los "
+        "items que entendió Gemini para que el cliente los enseñe, deje corregirlos y "
+        "los mande de vuelta a `POST /api/nevera/items`. "
+        "Tarda lo que tarde Gemini (unos segundos)."
+    ),
+    request=CompraParseRequestSerializer,
+    responses={
+        200: ItemPropuestoSerializer(many=True),
+        400: ErrorDetailSerializer,
+        502: OpenApiResponse(
+            response=ErrorDetailSerializer,
+            description="Gemini no devolvió algo interpretable.",
+        ),
+    },
+)
+class NeveraParseView(APIView):
+    """POST /api/nevera/parse — texto libre -> items propuestos, sin escribir en BD.
+
+    Aquí está la diferencia de fondo con el bot (SDD-web §6). `/anadir` guarda
+    lo entendido en `_pending_altas`, un diccionario en memoria del proceso,
+    y espera un `/confirmar` posterior. Esta view **no guarda estado**: el
+    resultado se lo lleva el cliente y vuelve en la siguiente petición. Así el
+    servidor no tiene sesiones que caducar ni altas huérfanas si nadie confirma,
+    y dos pestañas del navegador no se pisan la una a la otra.
+    """
+
+    def post(self, request):
+        from nevera.parsing import parse_compra_text
+
+        entrada = CompraParseRequestSerializer(data=request.data)
+        if not entrada.is_valid():
+            return Response({"detail": _primer_error(entrada.errors)}, status=400)
+
+        try:
+            items = parse_compra_text(entrada.validated_data["text"])
+        except ValueError as exc:
+            # 502 y no 400: la petición del cliente era correcta; quien ha
+            # contestado mal es el servicio de terceros que hay detrás.
+            return Response({"detail": f"No se pudo interpretar el texto: {exc}"}, status=502)
+
+        # Se pasan por el serializer de salida para que el cliente reciba
+        # exactamente la misma forma que luego tiene que devolver, incluidas
+        # las fechas como ISO. La unidad se valida ya aquí: si Gemini inventa
+        # una que `to_base` no conoce, mejor saberlo antes de enseñar la
+        # pantalla de confirmación que al intentar guardar.
+        salida = ItemPropuestoSerializer(data=items, many=True)
+        if not salida.is_valid():
+            return Response(
+                {"detail": f"Gemini devolvió items no válidos: {_primer_error(salida.errors)}"},
+                status=502,
+            )
+        return Response(salida.validated_data)
+
+
+@extend_schema(
+    tags=["Nevera"],
+    summary="Da de alta los items confirmados",
+    description=(
+        "Segundo paso del alta. Equivale a `/confirmar` en Telegram, pero recibe los "
+        "items en el cuerpo en vez de leerlos de la memoria del proceso. Si un item ya "
+        "existe con el mismo nombre normalizado y la misma unidad base, **suma** la "
+        "cantidad en vez de duplicar la fila (`nevera.services.add_items`)."
+    ),
+    request=NeveraItemsCreateSerializer,
+    responses={201: NeveraItemSerializer(many=True), 400: ErrorDetailSerializer},
+)
+class NeveraItemsView(APIView):
+    """POST /api/nevera/items — alta en lote de items ya confirmados."""
+
+    def post(self, request):
+        from nevera.services import add_items
+
+        entrada = NeveraItemsCreateSerializer(data=request.data)
+        if not entrada.is_valid():
+            return Response({"detail": _primer_error(entrada.errors)}, status=400)
+
+        # `origen="compra"` igual que /confirmar en el bot: el origen dice de
+        # dónde salió el dato (de un texto de compra parseado, no de un alta a
+        # mano), no por qué interfaz entró.
+        creados = add_items(entrada.validated_data["items"], origen="compra")
+
+        # 201 y no 200: esta petición sí añade recursos a la colección. No hay
+        # cabecera `Location` porque no se crea *un* recurso sino varios, y
+        # algunos puede que ni se creen (los que ya existían suman cantidad);
+        # por eso la respuesta son las filas resultantes, que es lo que el
+        # cliente necesita para pintar la tabla ya normalizada.
+        return Response(NeveraItemSerializer(creados, many=True).data, status=201)

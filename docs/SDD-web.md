@@ -510,6 +510,66 @@ siguiente (igual que en el SDD de nevera).
    dónde ejecutar el trabajo (hilo o cola tipo Celery/RQ) y una tabla de
    estado. No se hace aquí a propósito: la mitad difícil —la exclusión entre
    procesos— ya está resuelta con el advisory lock.
+   **6.b [hecho y verificado e2e, 2026-09-02] Alta de nevera con IA.**
+   `POST /api/nevera/parse` + `POST /api/nevera/items` (`api/views.py`) y la
+   tarjeta "Añadir con IA" de la pantalla `/nevera` en la SPA
+   (`components/AltaConIA.tsx`). Cierra el riesgo del §6 sobre el estado
+   conversacional.
+
+   **La decisión de fondo: el estado intermedio lo tiene el cliente.**
+   `/anadir` guarda lo que entendió Gemini en `_pending_altas`, un diccionario
+   en memoria del proceso del bot, y espera un `/confirmar`. La API no guarda
+   nada entre las dos llamadas: `parse` devuelve los items propuestos, la SPA
+   los tiene en el estado de React y los manda enteros de vuelta a `items`.
+   Se gana que el servidor no tenga sesiones que caducar ni altas huérfanas si
+   nadie confirma, que dos pestañas no se pisen, y que dé igual qué instancia
+   del backend atienda cada petición el día que haya más de una detrás de un
+   balanceador —que es el argumento de por qué una API REST se diseña
+   *stateless*—. Se paga que el cuerpo de la segunda petición lleve la lista
+   completa en vez de un identificador. Descartada la alternativa de guardar
+   las propuestas en una tabla `altas_pendientes`: exigiría migración, una
+   política de caducidad y limpieza de huérfanas, todo para no repetir unos
+   pocos kB.
+
+   Resto de decisiones:
+   - **Un solo serializer para las dos mitades.** `ItemPropuestoSerializer` es
+     a la vez la salida de `parse` y la entrada de `items`. Declarado una vez,
+     los dos extremos del flujo no pueden desincronizarse.
+   - **`502` cuando Gemini contesta mal**, sea JSON inválido o una unidad que
+     `to_base` no conoce. No es un `400`: la petición del cliente era correcta
+     y quien falló fue el servicio de terceros de detrás.
+   - **La unidad se valida antes de tocar la BD.** `add_items` da de alta item
+     por item, así que validar dentro dejaría escritos los items anteriores al
+     que falla y el alta a medias. Con la validación en el serializer, el alta
+     es todo o nada sin necesidad de una transacción explícita.
+   - **`201`, a diferencia del `200` de los análisis.** Aquí sí se añaden
+     recursos a la colección. Sin cabecera `Location` porque no se crea *un*
+     recurso sino varios, y algunos ni se crean: los que ya existían con el
+     mismo nombre normalizado y unidad base **suman** cantidad. Por eso la
+     respuesta son las filas resultantes, que es lo que el cliente necesita
+     para pintar la tabla ya normalizada.
+   - **Los items viajan en la unidad que dijo el usuario** (1 l), no en la
+     base (1000 ml). La conversión la hace `add_items` al guardar, igual que
+     para el bot; convertir antes haría que la pantalla de confirmación
+     enseñara números que el usuario no reconoce.
+   - **Las clases de formulario se extraen a `lib/ui.ts`.** La nevera tiene ya
+     dos formularios (editar una fila y dar de alta) que deben parecer el
+     mismo; repetir las clases en dos ficheros es garantía de que diverjan.
+
+   Verificado con 13 tests (`api/tests/test_nevera_alta.py`, contra la Supabase
+   real, con centinela y limpieza en `tearDown`). La llamada a Gemini se
+   sustituye por un doble: lo que se prueba es el contrato HTTP —códigos, forma
+   y validación—, no la calidad del parseo, que ya tiene sus tests en
+   `nevera/tests/test_parsing.py`; llamar a Gemini de verdad sería lento, caro
+   y no determinista.
+
+   **Verificación end-to-end (2026-09-02):** backend local y SPA local contra
+   la Supabase real. `POST /api/nevera/parse` → `200` en ~3 s con los items
+   propuestos y **ninguna fila escrita**; corrección en pantalla; `POST
+   /api/nevera/items` → `201` con las filas ya normalizadas y la tabla
+   refrescándose sola. Item de prueba borrado después con el `DELETE` de la
+   fase 4.
+
 7. **Repaso y cierre:** revisar qué comandos quedan solo en Telegram a
    propósito, documentar en la tabla §4 el estado final, y dejar listado lo
    que depende del SDD de nube (dominio, HTTPS, `ALLOWED_HOSTS`, CORS de prod).

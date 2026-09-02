@@ -4,6 +4,7 @@ import { apiFetch } from "./client";
 import type {
   Analysis,
   DayDetail,
+  ItemPropuesto,
   LastDay,
   NeveraItem,
   NeveraItemUpdate,
@@ -113,5 +114,37 @@ export function useLanzarAnalisis() {
         body: JSON.stringify(instruction.trim() ? { instruction: instruction.trim() } : {}),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["analyses"] }),
+  });
+}
+
+// --- Alta de nevera con IA, en dos pasos sin estado (SDD-web fase 6.b) ------
+//
+// El bot hace esto guardando lo entendido en `_pending_altas`, un diccionario
+// en memoria de su proceso, y esperando un /confirmar. La web no puede ni
+// quiere: cada petición es independiente. El estado intermedio —los items
+// propuestos— lo tiene el cliente, en el estado de React, y vuelve entero en
+// la segunda llamada. El servidor no guarda nada entre las dos.
+
+/** Paso 1: texto libre -> items propuestos. No escribe en la BD. */
+export function useParseCompra() {
+  return useMutation({
+    mutationFn: (text: string) =>
+      apiFetch<ItemPropuesto[]>("/api/nevera/parse", {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      }),
+  });
+}
+
+/** Paso 2: items ya confirmados (y editados) -> filas en la nevera. */
+export function useAltaItems() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (items: ItemPropuesto[]) =>
+      apiFetch<NeveraItem[]>("/api/nevera/items", {
+        method: "POST",
+        body: JSON.stringify({ items }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["nevera"] }),
   });
 }

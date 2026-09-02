@@ -9,6 +9,8 @@ from rest_framework import serializers
 
 from health_ai.config import MAX_INSTRUCTION_CHARS
 from nevera.models import NeveraItem
+from nevera.parsing import MAX_COMPRA_CHARS
+from nevera.units import to_base
 
 
 class ErrorDetailSerializer(serializers.Serializer):
@@ -81,6 +83,66 @@ class NeveraItemUpdateSerializer(serializers.Serializer):
         if attrs.get("categoria") == "":
             attrs["categoria"] = None
         return attrs
+
+
+class CompraParseRequestSerializer(serializers.Serializer):
+    """Cuerpo de `POST /api/nevera/parse`: el texto libre de la compra."""
+
+    text = serializers.CharField(
+        max_length=MAX_COMPRA_CHARS,
+        trim_whitespace=True,
+        help_text="Lista de la compra en texto libre, tal cual se copia del ticket.",
+    )
+
+
+class ItemPropuestoSerializer(serializers.Serializer):
+    """Un item tal y como lo entendió Gemini, **antes** de guardarse.
+
+    Sirve a la vez de salida de `/nevera/parse` y de entrada de
+    `/nevera/items`: es literalmente el mismo objeto, que sale al cliente,
+    se deja editar en pantalla y vuelve confirmado. Tenerlo declarado una
+    sola vez es lo que garantiza que las dos mitades del flujo no se
+    desincronicen.
+
+    Ojo: aquí `cantidad`/`unidad` van **como las dijo el usuario** (1 kg), no
+    en la unidad base (1000 g). La conversión la hace `services.add_items` con
+    `to_base`, igual que para el bot; si la hiciéramos aquí, la pantalla de
+    confirmación enseñaría números que el usuario no reconoce.
+    """
+
+    nombre = serializers.CharField(max_length=200)
+    cantidad = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
+    unidad = serializers.CharField(max_length=20)
+    categoria = serializers.CharField(
+        max_length=50, required=False, allow_null=True, allow_blank=True, default=None
+    )
+    fecha_caducidad = serializers.DateField(required=False, allow_null=True, default=None)
+    es_basico = serializers.BooleanField(required=False, default=False)
+
+    def validate_unidad(self, valor):
+        # Se valida aquí y no al guardar para que el 400 señale la unidad mala
+        # antes de tocar la BD: `add_items` da de alta item por item, así que
+        # una unidad inválida en el cuarto dejaría los tres primeros escritos.
+        try:
+            to_base(1, valor)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return valor
+
+    def validate(self, attrs):
+        if attrs.get("categoria") == "":
+            attrs["categoria"] = None
+        return attrs
+
+
+class NeveraItemsCreateSerializer(serializers.Serializer):
+    """Cuerpo de `POST /api/nevera/items`: los items ya confirmados por el usuario.
+
+    El cliente manda la lista entera, no un identificador de "lo que parseé
+    antes": el servidor no guardó nada en el paso anterior (SDD-web §6).
+    """
+
+    items = ItemPropuestoSerializer(many=True, allow_empty=False)
 
 
 class AnalysisSerializer(serializers.Serializer):

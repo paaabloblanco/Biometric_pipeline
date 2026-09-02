@@ -3,6 +3,8 @@ import { useState } from "react";
 import { ApiError } from "../api/client";
 import { useBorrarItem, useEditarItem, useNevera } from "../api/hooks";
 import type { NeveraItem, NeveraItemUpdate } from "../api/types";
+import AltaConIA from "../components/AltaConIA";
+import { BOTON, BOTON_PRIMARIO, INPUT } from "../lib/ui";
 
 const DIAS_ALERTA = 3;
 
@@ -60,14 +62,6 @@ function calcularCambios(original: NeveraItem, borrador: Borrador): NeveraItemUp
   return cambios;
 }
 
-/** Campo de texto sobre fondo oscuro: el relleno sube un escalón de elevación
- *  (--color-raised) en vez de bajar, que es como se lee "hueco" en oscuro. */
-const INPUT =
-  "w-full rounded border border-line bg-raised px-2 py-1 text-sm text-ink " +
-  "focus:border-cyan focus:outline-none";
-
-/** Botón secundario (Editar, Cancelar, No): contorno, sin relleno. */
-const BOTON = "rounded border border-line px-2 py-1 text-xs text-ink-soft hover:text-ink";
 
 export default function Nevera() {
   const { data, isLoading, isError } = useNevera();
@@ -123,6 +117,9 @@ export default function Nevera() {
   return (
     <div className="space-y-4">
       <h1 className="text-3xl font-bold tracking-tight text-ink">Nevera</h1>
+
+      <AltaConIA />
+
       {isLoading && <p className="text-sm text-ink-muted">Cargando…</p>}
       {isError && <p className="text-sm text-coral">No se pudo cargar la nevera.</p>}
       {error && <p className="text-sm text-coral">{error}</p>}
@@ -204,7 +201,7 @@ export default function Nevera() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right">
                         <button
-                          className="rounded bg-cyan px-2 py-1 text-xs font-semibold text-navbar disabled:opacity-50"
+                          className={BOTON_PRIMARIO}
                           onClick={() => void guardar(item)}
                           disabled={editar.isPending}
                         >
