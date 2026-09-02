@@ -22,11 +22,13 @@ from rest_framework.views import APIView
 
 from api.serializers import (
     AnalysisSerializer,
+    DayDetailSerializer,
     ErrorDetailSerializer,
     LastDaySerializer,
     NeveraItemSerializer,
     NeveraItemUpdateSerializer,
     SeriesSerializer,
+    SleepNightSerializer,
 )
 from supabase_data.services import SERIES_METRICS
 
@@ -115,6 +117,70 @@ class HealthSeriesView(APIView):
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)
         return Response({"metric": metric, "points": puntos})
+
+
+@extend_schema(
+    tags=["Salud"],
+    summary="Detalle de un día",
+    description=(
+        "Todo lo que pinta la página de un día: el resumen, las series intradía de "
+        "frecuencia cardíaca y SpO₂ (instante local + valor), y los días **con datos** "
+        "anterior y siguiente para navegar sin caer en pantallas vacías. El hipnograma "
+        "se pide aparte a `/health/sleep-night`, porque su unidad es la noche y no el "
+        "día natural."
+    ),
+    parameters=[
+        OpenApiParameter(
+            "date",
+            OpenApiTypes.DATE,
+            OpenApiParameter.QUERY,
+            description="Día a consultar (`YYYY-MM-DD`). Por defecto, el último con datos.",
+        ),
+    ],
+    responses={200: DayDetailSerializer, 400: ErrorDetailSerializer},
+)
+class HealthDayView(APIView):
+    """GET /api/health/day?date= — detalle de un día para la web."""
+
+    def get(self, request):
+        from supabase_data.services import get_day_detail
+
+        try:
+            return Response(get_day_detail(request.query_params.get("date")))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+
+@extend_schema(
+    tags=["Salud"],
+    summary="Fases de la última noche (hipnograma)",
+    description=(
+        "Los tramos de la sesión de sueño principal que termina en `date`, en hora "
+        'local, para dibujar un hipnograma. "La noche" es la sesión más larga que '
+        "acaba ese día: las siestas quedan fuera. Las sesiones duplicadas que escribe "
+        "el sync se descartan al leer."
+    ),
+    parameters=[
+        OpenApiParameter(
+            "date",
+            OpenApiTypes.DATE,
+            OpenApiParameter.QUERY,
+            description="Día del despertar (`YYYY-MM-DD`). Por defecto, el último con datos.",
+        ),
+    ],
+    responses={200: SleepNightSerializer, 400: ErrorDetailSerializer},
+)
+class HealthSleepNightView(APIView):
+    """GET /api/health/sleep-night?date= — fases de una noche, para el hipnograma."""
+
+    def get(self, request):
+        from supabase_data.services import get_sleep_night
+
+        try:
+            noche = get_sleep_night(request.query_params.get("date"))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(noche)
 
 
 @extend_schema(

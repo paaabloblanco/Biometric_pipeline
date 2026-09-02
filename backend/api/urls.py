@@ -13,8 +13,10 @@ from api.auth import OwnerTokenObtainPairView
 from api.docs import SchemaView, SwaggerView
 from api.views import (
     AnalysesView,
+    HealthDayView,
     HealthLastDayView,
     HealthSeriesView,
+    HealthSleepNightView,
     NeveraItemView,
     NeveraView,
 )
@@ -25,7 +27,9 @@ urlpatterns = [
     path("auth/login", OwnerTokenObtainPairView.as_view(), name="login"),
     path("auth/refresh", TokenRefreshView.as_view(), name="refresh"),
     path("health/last-day", HealthLastDayView.as_view(), name="health-last-day"),
+    path("health/day", HealthDayView.as_view(), name="health-day"),
     path("health/series", HealthSeriesView.as_view(), name="health-series"),
+    path("health/sleep-night", HealthSleepNightView.as_view(), name="health-sleep-night"),
     path("analyses", AnalysesView.as_view(), name="analyses"),
     path("nevera", NeveraView.as_view(), name="nevera"),
     path("nevera/items/<int:item_id>", NeveraItemView.as_view(), name="nevera-item"),
