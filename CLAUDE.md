@@ -44,6 +44,20 @@ como mentor socrático — preguntas guía y pasos pequeños verificables, no
 implementación directa. En el resto del repo se implementa normal, pero con la
 explicación por delante.
 
+**Decisiones de diseño: pregunta antes de proponer.** Cuando haya una decisión
+arquitectónica real que tomar (dónde vive una responsabilidad, qué contrato
+expone un endpoint, cómo se modela algo), pregúntale primero qué haría él y
+por qué, antes de dar tu propuesta. Comprometerse con una respuesta antes de
+ver la buena es lo que hace que se fije; leer la respuesta correcta produce
+sensación de haber entendido sin el aprendizaje. La implementación mecánica
+posterior la sigues haciendo tú.
+
+**Registro de aprendizaje.** `aprendizaje/` guarda los modelos mentales del
+usuario (`conceptos.md`, `errores.md`), versionado en git. Propón una entrada
+solo cuando salga un malentendido **con patrón** o una comprensión duradera —
+nunca por cada interacción: un registro inflado no se repasa. Nunca reescribas
+una entrada antigua; la explicación original equivocada es justo lo valioso.
+
 ## Qué es
 
 Pipeline biométrico personal de un solo usuario:
@@ -84,6 +98,7 @@ backend/
   venv/  manage.py  pyproject.toml  requirements*.txt  .env
 frontend/          # SPA React + Vite, deploy en Vercel (Root Directory = frontend)
 docs/              # SDDs (documentos de diseño por feature)
+aprendizaje/       # registro de aprendizaje del usuario (ver skills)
 ```
 
 ## Convenciones (importantes)
@@ -149,6 +164,23 @@ Guardarraíles automáticos (`.claude/settings.json` + `.claude/hooks/*.py`):
 | Al terminar (Stop) | `ruff check` + `ruff format --check`; avisa si algo falla (no bloquea) |
 
 Tras clonar o si no se activan: abrir `/hooks` una vez o reiniciar Claude Code.
+
+### Skills de aprendizaje (`.claude/skills/`)
+
+Tres flujos que invoca el usuario. Existen porque el modo por defecto del repo
+(yo implemento, él lee la explicación) enseña a *reconocer* conceptos, no a
+*producirlos*. Estos tres cierran ese hueco:
+
+| Skill | Para qué | Cuándo |
+|---|---|---|
+| `/explicar` | Autoexplicación (*teach-back*): él explica, yo evalúo sin rellenar huecos | Al cerrar una fase de un SDD |
+| `/recordar` | Práctica de recuperación sobre `aprendizaje/` y el repo | Al empezar a trabajar (4-6 preguntas) |
+| `/revisar` | Repaso guiado de un fichero ya escrito; **el cambio lo escribe él** | Recorriendo el código existente |
+
+En `/revisar` **no edites el fichero bajo revisión** salvo que pida
+explícitamente modo shipping: describes el cambio con la escalera de pistas
+(pregunta → dirección → concepto → estrategia → pseudocódigo → parcial →
+completo) y él lo escribe.
 
 ## Reglas críticas
 
