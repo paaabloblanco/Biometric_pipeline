@@ -47,6 +47,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "backend/venv/Scripts/python.exe .claude/hooks/aprendizaje_arranque.py",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

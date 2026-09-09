@@ -162,6 +162,7 @@ Guardarraíles automáticos (`.claude/settings.json` + `.claude/hooks/*.py`):
 | Antes de `git push` | Pide confirmación si el push va a `main` |
 | Tras editar un `.py` | `ruff format` + orden de imports sobre ese fichero |
 | Al terminar (Stop) | `ruff check` + `ruff format --check`; avisa si algo falla (no bloquea) |
+| Al arrancar (SessionStart) | Lee `aprendizaje/` y sugiere `/recordar` y el siguiente `/revisar` |
 
 Tras clonar o si no se activan: abrir `/hooks` una vez o reiniciar Claude Code.
 
