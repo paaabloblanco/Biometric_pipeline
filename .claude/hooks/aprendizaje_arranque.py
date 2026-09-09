@@ -96,5 +96,5 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except Exception:  # nunca bloquear el arranque por este aviso
+    except Exception:  # noqa: BLE001 - un aviso roto no debe impedir arrancar
         sys.exit(0)
