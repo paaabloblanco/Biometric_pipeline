@@ -60,3 +60,6 @@ Thumbs.db
 
 # Claude Code overrides personales
 .claude/settings.local.json
+
+# Material de clase ajeno al proyecto
+Ejercicios/
