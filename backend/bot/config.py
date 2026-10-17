@@ -10,6 +10,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from health_ai.config import DEFAULT_INSTRUCTION as _DEFAULT_INSTRUCTION
+
 log = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,10 +47,10 @@ def _parse_chat_ids(raw: str | None) -> frozenset[int]:
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ALLOWED_CHAT_IDS = _parse_chat_ids(os.getenv("TELEGRAM_ALLOWED_CHAT_IDS"))
-DEFAULT_INSTRUCTION = os.getenv(
-    "TELEGRAM_DEFAULT_INSTRUCTION",
-    "Dame el análisis de recuperación del día.",
-)
+# Se reexporta desde health_ai/config.py: la instrucción por defecto no es una
+# cosa de Telegram, la comparten el bot, la API web y daily_sync.py. Se deja
+# aquí el nombre para no tocar los imports existentes del bot.
+DEFAULT_INSTRUCTION = _DEFAULT_INSTRUCTION
 
 # Límite duro de la API de Telegram por mensaje.
 TELEGRAM_MAX_MESSAGE = 4096

@@ -1,1 +1,63 @@
 @import "tailwindcss";
+
+/* Tokens de diseño (design tokens). En Tailwind 4 el tema se declara aquí, no
+   en tailwind.config.js: cada variable genera automáticamente sus utilidades
+   (--color-coral -> bg-coral, text-coral, stroke-coral...).
+
+   La interfaz es oscura de forma fija (no hay conmutador claro/oscuro): es una
+   app de un solo usuario que se mira sobre todo de noche, y mantener un único
+   modo evita duplicar y revalidar toda la paleta. Si algún día hace falta el
+   modo claro, se añade redefiniendo estas mismas variables bajo
+   `@media (prefers-color-scheme: light)` — ningún componente cambia, porque
+   ninguno tiene colores propios. */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Superficies, en orden de elevación: el fondo es el plano más hundido y
+     cada capa por encima aclara un paso. En oscuro la elevación se comunica
+     con luminosidad, no con sombra (una sombra negra sobre negro no se ve). */
+  --color-canvas: #0f151d; /* fondo de página */
+  --color-navbar: #131a24; /* barra superior */
+  --color-surface: #182029; /* tarjetas */
+  --color-raised: #1f2934; /* filas destacadas, campos de formulario */
+  --color-line: #2a3542; /* bordes y rejilla de gráficas */
+
+  /* Tinta (jerarquía tipográfica). Contrastes sobre --color-surface:
+     ink 13.7:1, ink-soft 7.2:1, ink-muted 4.7:1 — los tres por encima del
+     4.5:1 de AA para texto pequeño. */
+  --color-ink: #e6ebf2;
+  --color-ink-soft: #9fadbd;
+  --color-ink-muted: #7d8b9c;
+
+  /* Paleta de datos, re-escalonada para fondo oscuro y validada con el
+     validador de la skill dataviz sobre la superficie #182029 (--pairs all):
+     banda de luminosidad, suelo de croma, separación CVD 9.6 ΔE, visión
+     normal 23.0 ΔE y contraste >= 3:1, todo en verde. Los tonos son los
+     mismos que en la versión clara; lo que cambia es el escalón. */
+  --color-coral: #e5484d; /* frecuencia cardíaca */
+  --color-violet: #9b51c9; /* SpO2 */
+  --color-cyan: #17a0c4; /* sueño / acento de navegación */
+
+  /* Fases del sueño. Se validan como grupo aparte (son cuatro marcas que
+     conviven en el hipnograma) en orden de fila, con --pairs adjacent: todo
+     en verde, peor par adyacente CVD 9.6 ΔE / visión normal 16.2 ΔE. */
+  --color-sleep-awake: #c98500;
+  --color-sleep-rem: #9b51c9;
+  --color-sleep-light: #17a0c4;
+  --color-sleep-deep: #5f6ce8;
+
+  /* Elevación y radio */
+  --radius-card: 18px;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.35), 0 8px 24px -4px rgb(0 0 0 / 0.45);
+  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.4), 0 12px 32px -6px rgb(0 0 0 / 0.55);
+}
+
+html {
+  /* Le dice al navegador que pinte en oscuro lo que no controlamos por CSS:
+     barras de scroll, el desplegable del `<input type="date">` de la nevera y
+     el relleno del autocompletado. Sin esto quedan islas blancas. */
+  color-scheme: dark;
+  background-color: var(--color-canvas);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}

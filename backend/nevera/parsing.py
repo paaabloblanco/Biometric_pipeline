@@ -7,6 +7,13 @@ from datetime import date
 
 from health_ai.pruebas import send_prompt_to_gemini
 
+# Tope de longitud del texto de compra que llega por la API. Mismo motivo que
+# `MAX_INSTRUCTION_CHARS` en health_ai: el texto se incrusta en el prompt que
+# va a Gemini, así que acotarlo limita el gasto de tokens y el margen para
+# reescribir el prompt entero desde el cuerpo de la petición (*prompt
+# injection*). Es holgado a propósito: un ticket de compra largo cabe de sobra.
+MAX_COMPRA_CHARS = 4000
+
 PROMPT_TEMPLATE = (
     "Convierte esta lista de la compra en JSON estricto, sin explicaciones y "
     "sin bloques de código markdown.\n\n"
